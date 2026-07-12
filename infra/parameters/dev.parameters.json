@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+    "environment": {
+      "value": "dev"
+    },
+    "projectName": {
+      "value": "smartnest"
+    },
+    "resourceGroupName": {
+      "value": "smartnest-rg"
+    },
+    "cosmosAccountName": {
+      "value": "smartnest-cosmos"
+    },
+    "cosmosDatabaseName": {
+      "value": "smartnest-db"
+    },
+    "serviceBusNamespaceName": {
+      "value": "smartnest-bus"
+    },
+    "storageAccountName": {
+      "value": "smartneststorage"
+    },
+    "appInsightsName": {
+      "value": "smartnest-insights"
+    },
+    "logAnalyticsWorkspaceName": {
+      "value": "smartnest-logs"
+    },
+    "apimName": {
+      "value": "smartnest-apim"
+    },
+    "apimPublisherEmail": {
+      "value": "admin@smartnest.local"
+    },
+    "apimPublisherName": {
+      "value": "SmartNest Admin"
+    },
+    "tenantId": {
+      "value": "YOUR_TENANT_ID"
+    },
+    "apiAppClientId": {
+      "value": "YOUR_API_APP_CLIENT_ID"
+    },
+    "monitorAlertEmailAddress": {
+      "value": "alerts@smartnest.local"
+    }
+  }
+}
