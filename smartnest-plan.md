@@ -158,7 +158,7 @@ but must always include `deviceId` and `homeId` for `DeviceStateChanged` events.
 ---
 
 ### Task 1 — Azure Infrastructure Setup
-**Status:** `[x] complete`
+**Status:** `[] pending`
 
 **Intent:**
 Provision all Azure services required by the platform within the Free Tier. This forms the
