@@ -1,0 +1,276 @@
+# ============================================================
+#  SmartNest — Azure Pipelines CI/CD
+#
+#  Pipeline stages:
+#    1. validate   — bicep build + az deployment validate
+#    2. whatif     — az deployment what-if (informational)
+#    3. deploy-dev — deploy to dev (auto on main branch)
+#    4. deploy-staging — deploy to staging (manual approval gate)
+#    5. deploy-prod    — deploy to prod    (manual approval gate)
+#
+#  Required pipeline variables / variable groups:
+#    Variable group "smartnest-common":
+#      AZURE_SUBSCRIPTION_ID   — Azure subscription GUID
+#      AZURE_TENANT_ID         — Entra ID tenant GUID
+#      API_APP_CLIENT_ID       — App Registration client ID
+#      APIM_PUBLISHER_EMAIL    — APIM publisher e-mail
+#      MONITOR_ALERT_EMAIL     — Alert notification e-mail
+#
+#  Service connection:
+#    "smartnest-azure-sc" — Azure Resource Manager service connection
+#    (scoped to subscription, with Contributor on the subscription or
+#     on pre-created resource groups)
+# ============================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - SmartNestPlan
+  paths:
+    include:
+      - infra/**
+      - azure-pipelines.yml
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infra/**
+
+variables:
+  - group: smartnest-common        # shared secrets / config (see comment above)
+  - name: templateFile
+    value: infra/main.bicep
+  - name: azureServiceConnection
+    value: smartnest-azure-sc
+  - name: devResourceGroup
+    value: smartnest-rg-dev
+  - name: stagingResourceGroup
+    value: smartnest-rg-staging
+  - name: prodResourceGroup
+    value: smartnest-rg-prod
+  - name: location
+    value: eastus
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 1 — Validate (runs on every push / PR)
+# ─────────────────────────────────────────────────────────────
+stages:
+  - stage: Validate
+    displayName: '🔍 Validate Bicep'
+    jobs:
+      - job: ValidateBicep
+        displayName: 'Bicep lint & ARM validate'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: 'Install Bicep CLI'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: az bicep install
+
+          - task: AzureCLI@2
+            displayName: 'Bicep build (lint)'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: az bicep build --file $(templateFile)
+
+          - task: AzureCLI@2
+            displayName: 'Ensure dev resource group'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az group create \
+                  --name $(devResourceGroup) \
+                  --location $(location) \
+                  --tags project=smartnest environment=dev managedBy=bicep \
+                  --output table
+
+          - task: AzureCLI@2
+            displayName: 'ARM validate — dev'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az deployment group validate \
+                  --resource-group $(devResourceGroup) \
+                  --template-file $(templateFile) \
+                  --parameters @infra/parameters/dev.parameters.json \
+                  --parameters tenantId="$(AZURE_TENANT_ID)" \
+                               apiAppClientId="$(API_APP_CLIENT_ID)" \
+                               apimPublisherEmail="$(APIM_PUBLISHER_EMAIL)" \
+                               monitorAlertEmailAddress="$(MONITOR_ALERT_EMAIL)" \
+                  --output table
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 2 — What-If (runs on every push / PR, informational)
+# ─────────────────────────────────────────────────────────────
+  - stage: WhatIf
+    displayName: '📋 What-If Preview (dev)'
+    dependsOn: Validate
+    condition: succeeded()
+    jobs:
+      - job: WhatIfDev
+        displayName: 'What-if against dev'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: 'What-if — dev'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az deployment group what-if \
+                  --resource-group $(devResourceGroup) \
+                  --template-file $(templateFile) \
+                  --parameters @infra/parameters/dev.parameters.json \
+                  --parameters tenantId="$(AZURE_TENANT_ID)" \
+                               apiAppClientId="$(API_APP_CLIENT_ID)" \
+                               apimPublisherEmail="$(APIM_PUBLISHER_EMAIL)" \
+                               monitorAlertEmailAddress="$(MONITOR_ALERT_EMAIL)"
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 3 — Deploy Dev  (main branch only, auto)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployDev
+    displayName: '🚀 Deploy — Dev'
+    dependsOn: WhatIf
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployDevInfra
+        displayName: 'Deploy Bicep to dev'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-dev     # create this environment in Azure DevOps for audit trail
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy — dev'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az group create \
+                        --name $(devResourceGroup) \
+                        --location $(location) \
+                        --tags project=smartnest environment=dev managedBy=bicep \
+                        --output table
+
+                      az deployment group create \
+                        --resource-group $(devResourceGroup) \
+                        --template-file $(templateFile) \
+                        --parameters @infra/parameters/dev.parameters.json \
+                        --parameters tenantId="$(AZURE_TENANT_ID)" \
+                                     apiAppClientId="$(API_APP_CLIENT_ID)" \
+                                     apimPublisherEmail="$(APIM_PUBLISHER_EMAIL)" \
+                                     monitorAlertEmailAddress="$(MONITOR_ALERT_EMAIL)" \
+                        --name "smartnest-dev-$(Build.BuildId)" \
+                        --output table
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 4 — Deploy Staging  (manual approval gate)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployStaging
+    displayName: '🚀 Deploy — Staging'
+    dependsOn: DeployDev
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployStagingInfra
+        displayName: 'Deploy Bicep to staging'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-staging  # add an approval check in Azure DevOps Environments UI
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy — staging'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az group create \
+                        --name $(stagingResourceGroup) \
+                        --location $(location) \
+                        --tags project=smartnest environment=staging managedBy=bicep \
+                        --output table
+
+                      az deployment group create \
+                        --resource-group $(stagingResourceGroup) \
+                        --template-file $(templateFile) \
+                        --parameters @infra/parameters/staging.parameters.json \
+                        --parameters tenantId="$(AZURE_TENANT_ID)" \
+                                     apiAppClientId="$(API_APP_CLIENT_ID)" \
+                                     apimPublisherEmail="$(APIM_PUBLISHER_EMAIL)" \
+                                     monitorAlertEmailAddress="$(MONITOR_ALERT_EMAIL)" \
+                        --name "smartnest-staging-$(Build.BuildId)" \
+                        --output table
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 5 — Deploy Prod  (manual approval gate)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployProd
+    displayName: '🚀 Deploy — Prod'
+    dependsOn: DeployStaging
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployProdInfra
+        displayName: 'Deploy Bicep to prod'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-prod    # add an approval check in Azure DevOps Environments UI
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy — prod'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az group create \
+                        --name $(prodResourceGroup) \
+                        --location $(location) \
+                        --tags project=smartnest environment=prod managedBy=bicep \
+                        --output table
+
+                      az deployment group create \
+                        --resource-group $(prodResourceGroup) \
+                        --template-file $(templateFile) \
+                        --parameters @infra/parameters/prod.parameters.json \
+                        --parameters tenantId="$(AZURE_TENANT_ID)" \
+                                     apiAppClientId="$(API_APP_CLIENT_ID)" \
+                                     apimPublisherEmail="$(APIM_PUBLISHER_EMAIL)" \
+                                     monitorAlertEmailAddress="$(MONITOR_ALERT_EMAIL)" \
+                        --name "smartnest-prod-$(Build.BuildId)" \
+                        --output table

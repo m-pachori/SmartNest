@@ -8,10 +8,13 @@ written in [Azure Bicep](https://learn.microsoft.com/en-us/azure/azure-resource-
 ## Directory Layout
 
 ```
+/                                       # repo root
+├── azure-pipelines.yml                 # Azure Pipelines CI/CD definition
+│
 infra/
 ├── main.bicep                          # Top-level orchestration — deploys all modules
-├── deploy.sh                           # Bash deployment script
-├── deploy.ps1                          # PowerShell deployment script
+├── deploy.sh                           # Bash deployment script (local use)
+├── deploy.ps1                          # PowerShell deployment script (local use)
 ├── setup-entra.sh                      # Entra ID (Azure AD) setup — Bash
 ├── setup-entra.ps1                     # Entra ID (Azure AD) setup — PowerShell
 │
@@ -25,7 +28,9 @@ infra/
 │   └── entra-app-registration.bicep    # Documentation module — CLI commands for Entra ID setup
 │
 ├── parameters/
-│   └── dev.parameters.json             # Parameter values for the dev environment
+│   ├── dev.parameters.json             # Parameter values for dev
+│   ├── staging.parameters.json         # Parameter values for staging
+│   └── prod.parameters.json            # Parameter values for prod
 │
 └── policies/
     └── jwt-validation.xml              # APIM JWT validation policy (reference copy)
@@ -95,6 +100,66 @@ The script will:
 2. Validate the Bicep template
 3. Show a what-if preview
 4. Ask for confirmation before deploying
+
+---
+
+## Azure Pipelines (CI/CD)
+
+The pipeline is defined in [`azure-pipelines.yml`](../azure-pipelines.yml) at the repository root.
+
+### Pipeline Stages
+
+| Stage | Trigger | What it does |
+|-------|---------|--------------|
+| **Validate** | Every push / PR | `az bicep build` lint + `az deployment group validate` against dev RG |
+| **What-If** | Every push / PR | `az deployment group what-if` — shows planned changes, never modifies resources |
+| **Deploy Dev** | `main` branch only, automatic | Deploys to `smartnest-rg-dev` |
+| **Deploy Staging** | `main` branch, **manual approval** | Deploys to `smartnest-rg-staging` |
+| **Deploy Prod** | After staging approved, **manual approval** | Deploys to `smartnest-rg-prod` |
+
+### One-time Azure DevOps Setup
+
+#### 1. Create a Service Connection
+
+In **Project Settings → Service Connections**:
+
+1. Click **New service connection → Azure Resource Manager**
+2. Select **Service principal (automatic)** or **Workload Identity federation**
+3. Scope to your subscription (Contributor role required)
+4. Name it exactly **`smartnest-azure-sc`**
+
+#### 2. Create the Variable Group
+
+In **Pipelines → Library → + Variable group**, name it **`smartnest-common`** and add:
+
+| Variable | Description | Secret? |
+|----------|-------------|---------|
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription GUID | No |
+| `AZURE_TENANT_ID` | Entra ID tenant GUID | No |
+| `API_APP_CLIENT_ID` | App Registration client ID (from setup-entra script) | Yes |
+| `APIM_PUBLISHER_EMAIL` | APIM publisher e-mail | No |
+| `MONITOR_ALERT_EMAIL` | Alert notification e-mail | No |
+
+#### 3. Create Pipeline Environments with Approval Gates
+
+In **Pipelines → Environments**, create three environments and add an **Approvals** check to `staging` and `prod`:
+
+| Environment name | Approval required |
+|-----------------|-------------------|
+| `smartnest-dev` | No (auto) |
+| `smartnest-staging` | Yes |
+| `smartnest-prod` | Yes |
+
+#### 4. Register the Pipeline
+
+1. Go to **Pipelines → New Pipeline → Azure Repos Git**
+2. Select your repository
+3. Choose **Existing Azure Pipelines YAML file**
+4. Path: `/azure-pipelines.yml`
+
+> **Secrets in parameters files** — `tenantId`, `apiAppClientId`, `apimPublisherEmail`, and
+> `monitorAlertEmailAddress` are intentionally omitted from the checked-in parameter files and
+> are injected at pipeline runtime from the `smartnest-common` variable group.
 
 ---
 
