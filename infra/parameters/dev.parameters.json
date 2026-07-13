@@ -11,8 +11,11 @@
     "projectName": {
       "value": "smartnest"
     },
-    "resourceGroupName": {
-      "value": "smartnest-rg"
+    "cosmosEnableFreeTier": {
+      "value": true
+    },
+    "keyVaultName": {
+      "value": "smartnest-kv-dev"
     },
     "cosmosAccountName": {
       "value": "smartnest-cosmos"

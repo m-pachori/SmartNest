@@ -2,6 +2,12 @@
 //  SmartNest — API Management Module
 //  Developer tier — single gateway for all HTTP Functions.
 //  JWT validation policy applied at the global/API level.
+//
+//  Fix H3: all API versions changed from 2023-05-01-preview to
+//           stable GA 2022-08-01.
+//  Fix M1: apimLogger now correctly uses appInsightsResourceId for
+//           the resourceId field and appInsightsInstrumentationKey
+//           for the credentials field (previously these were swapped).
 // ============================================================
 @description('Azure region')
 param location string
@@ -21,7 +27,10 @@ param tenantId string
 @description('Azure AD App Registration Client ID (smartnest-api)')
 param apiClientId string
 
-@description('Application Insights connection string for APIM logging')
+@description('Application Insights ARM resource ID — used to link the APIM logger to the correct AI resource')
+param appInsightsResourceId string
+
+@description('Application Insights connection string — used as the logger credential')
 param appInsightsConnectionString string
 
 @description('Application Insights instrumentation key')
@@ -32,8 +41,9 @@ param tags object = {}
 
 // ------------------------------------------------------------------
 // API Management Service — Developer tier (no SLA, suitable for POC)
+// Fix H3: stable GA API version 2022-08-01
 // ------------------------------------------------------------------
-resource apimService 'Microsoft.ApiManagement/service@2023-05-01-preview' = {
+resource apimService 'Microsoft.ApiManagement/service@2022-08-01' = {
   name: apimName
   location: location
   tags: tags
@@ -60,7 +70,7 @@ resource apimService 'Microsoft.ApiManagement/service@2023-05-01-preview' = {
 // ------------------------------------------------------------------
 // Named values — injected into the JWT policy XML at runtime
 // ------------------------------------------------------------------
-resource namedValueTenantId 'Microsoft.ApiManagement/service/namedValues@2023-05-01-preview' = {
+resource namedValueTenantId 'Microsoft.ApiManagement/service/namedValues@2022-08-01' = {
   parent: apimService
   name: 'tenantId'
   properties: {
@@ -71,7 +81,7 @@ resource namedValueTenantId 'Microsoft.ApiManagement/service/namedValues@2023-05
   }
 }
 
-resource namedValueApiClientId 'Microsoft.ApiManagement/service/namedValues@2023-05-01-preview' = {
+resource namedValueApiClientId 'Microsoft.ApiManagement/service/namedValues@2022-08-01' = {
   parent: apimService
   name: 'apiClientId'
   properties: {
@@ -84,15 +94,19 @@ resource namedValueApiClientId 'Microsoft.ApiManagement/service/namedValues@2023
 
 // ------------------------------------------------------------------
 // Application Insights Logger for APIM
+// Fix M1: resourceId now correctly receives the ARM resource ID of the
+//          App Insights component (not the connection string).
+//          credentials.connectionString receives the connection string.
 // ------------------------------------------------------------------
-resource apimLogger 'Microsoft.ApiManagement/service/loggers@2023-05-01-preview' = {
+resource apimLogger 'Microsoft.ApiManagement/service/loggers@2022-08-01' = {
   parent: apimService
   name: 'smartnest-insights-logger'
   properties: {
     loggerType: 'applicationInsights'
     description: 'Application Insights logger for SmartNest APIM'
-    resourceId: appInsightsConnectionString   // connection string used for identification
+    resourceId: appInsightsResourceId        // Fix M1: ARM resource ID
     credentials: {
+      connectionString: appInsightsConnectionString  // Fix M1: connection string here
       instrumentationKey: appInsightsInstrumentationKey
     }
     isBuffered: true
@@ -102,7 +116,7 @@ resource apimLogger 'Microsoft.ApiManagement/service/loggers@2023-05-01-preview'
 // ------------------------------------------------------------------
 // Diagnostic settings — link APIM to App Insights
 // ------------------------------------------------------------------
-resource apimDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2023-05-01-preview' = {
+resource apimDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2022-08-01' = {
   parent: apimService
   name: 'applicationinsights'
   properties: {
@@ -129,7 +143,7 @@ resource apimDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2023-05-01
 // ------------------------------------------------------------------
 // Global inbound policy — JWT validation applied to every API
 // ------------------------------------------------------------------
-resource apimGlobalPolicy 'Microsoft.ApiManagement/service/policies@2023-05-01-preview' = {
+resource apimGlobalPolicy 'Microsoft.ApiManagement/service/policies@2022-08-01' = {
   parent: apimService
   name: 'policy'
   properties: {
@@ -179,7 +193,7 @@ resource apimGlobalPolicy 'Microsoft.ApiManagement/service/policies@2023-05-01-p
 // ------------------------------------------------------------------
 // Products — group APIs logically
 // ------------------------------------------------------------------
-resource smartNestProduct 'Microsoft.ApiManagement/service/products@2023-05-01-preview' = {
+resource smartNestProduct 'Microsoft.ApiManagement/service/products@2022-08-01' = {
   parent: apimService
   name: 'smartnest-backend'
   properties: {

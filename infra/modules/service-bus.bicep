@@ -4,6 +4,14 @@
 //  Topics:  device-events, home-events, user-events
 //  Queue:   media-processing (replaced by blob trigger per plan,
 //           retained for optional future use)
+//
+//  Fix H3: all API versions changed from 2022-10-01-preview to
+//           stable GA 2021-11-01.
+//  Fix C1: all connection string outputs are @secure() and are
+//           NOT returned as plain strings — caller (main.bicep)
+//           passes them directly to the Key Vault module.
+//  Fix L2: subscriptions now reference their parent topic via
+//           a named resource variable, not a fragile array index.
 // ============================================================
 @description('Azure region')
 param location string
@@ -16,8 +24,9 @@ param tags object = {}
 
 // ------------------------------------------------------------------
 // Service Bus Namespace — Standard tier (topics require Standard+)
+// Fix H3: stable GA API version 2021-11-01
 // ------------------------------------------------------------------
-resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
+resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2021-11-01' = {
   name: namespaceName
   location: location
   tags: tags
@@ -33,67 +42,58 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview
 }
 
 // ------------------------------------------------------------------
-// Topics
+// Topics — declared as named resources (Fix L2: no array index coupling)
 // ------------------------------------------------------------------
-var topicsConfig = [
-  {
-    name: 'device-events'
+resource deviceEventsTopic 'Microsoft.ServiceBus/namespaces/topics@2021-11-01' = {
+  parent: serviceBusNamespace
+  name: 'device-events'
+  properties: {
     // device-events is high-frequency; retain messages for 1 day
     defaultMessageTimeToLive: 'P1D'
     maxSizeInMegabytes: 1024
     requiresDuplicateDetection: false
     enablePartitioning: false
-    subscriptions: [
-      { name: 'automation', lockDuration: 'PT1M', maxDeliveryCount: 5 }
-      { name: 'alert',      lockDuration: 'PT1M', maxDeliveryCount: 5 }
-      { name: 'audit',      lockDuration: 'PT2M', maxDeliveryCount: 10 }
-    ]
+    enableBatchedOperations: true
+    supportOrdering: false
+    status: 'Active'
   }
-  {
-    name: 'home-events'
+}
+
+resource homeEventsTopic 'Microsoft.ServiceBus/namespaces/topics@2021-11-01' = {
+  parent: serviceBusNamespace
+  name: 'home-events'
+  properties: {
     defaultMessageTimeToLive: 'P3D'
     maxSizeInMegabytes: 1024
     requiresDuplicateDetection: false
     enablePartitioning: false
-    subscriptions: [
-      { name: 'audit', lockDuration: 'PT2M', maxDeliveryCount: 10 }
-    ]
+    enableBatchedOperations: true
+    supportOrdering: false
+    status: 'Active'
   }
-  {
-    name: 'user-events'
+}
+
+resource userEventsTopic 'Microsoft.ServiceBus/namespaces/topics@2021-11-01' = {
+  parent: serviceBusNamespace
+  name: 'user-events'
+  properties: {
     defaultMessageTimeToLive: 'P3D'
     maxSizeInMegabytes: 1024
     requiresDuplicateDetection: false
     enablePartitioning: false
-    subscriptions: [
-      { name: 'audit', lockDuration: 'PT2M', maxDeliveryCount: 10 }
-    ]
+    enableBatchedOperations: true
+    supportOrdering: false
+    status: 'Active'
   }
-]
+}
 
-resource topics 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-preview' = [
-  for topic in topicsConfig: {
-    parent: serviceBusNamespace
-    name: topic.name
-    properties: {
-      defaultMessageTimeToLive: topic.defaultMessageTimeToLive
-      maxSizeInMegabytes: topic.maxSizeInMegabytes
-      requiresDuplicateDetection: topic.requiresDuplicateDetection
-      enablePartitioning: topic.enablePartitioning
-      enableBatchedOperations: true
-      supportOrdering: false
-      status: 'Active'
-    }
-  }
-]
-
-// Subscriptions must be created after their parent topic.
-// Bicep does not support nested loops directly, so each topic's
-// subscriptions are declared inline below.
+// ------------------------------------------------------------------
+// Subscriptions — each references its named parent topic (Fix L2)
+// ------------------------------------------------------------------
 
 // --- device-events subscriptions ---
-resource deviceEventsAutomationSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
-  parent: topics[0]
+resource deviceEventsAutomationSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2021-11-01' = {
+  parent: deviceEventsTopic
   name: 'automation'
   properties: {
     lockDuration: 'PT1M'
@@ -105,8 +105,8 @@ resource deviceEventsAutomationSub 'Microsoft.ServiceBus/namespaces/topics/subsc
   }
 }
 
-resource deviceEventsAlertSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
-  parent: topics[0]
+resource deviceEventsAlertSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2021-11-01' = {
+  parent: deviceEventsTopic
   name: 'alert'
   properties: {
     lockDuration: 'PT1M'
@@ -118,8 +118,8 @@ resource deviceEventsAlertSub 'Microsoft.ServiceBus/namespaces/topics/subscripti
   }
 }
 
-resource deviceEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
-  parent: topics[0]
+resource deviceEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2021-11-01' = {
+  parent: deviceEventsTopic
   name: 'audit'
   properties: {
     lockDuration: 'PT2M'
@@ -132,8 +132,8 @@ resource deviceEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscripti
 }
 
 // --- home-events subscriptions ---
-resource homeEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
-  parent: topics[1]
+resource homeEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2021-11-01' = {
+  parent: homeEventsTopic
   name: 'audit'
   properties: {
     lockDuration: 'PT2M'
@@ -146,8 +146,8 @@ resource homeEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscription
 }
 
 // --- user-events subscriptions ---
-resource userEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
-  parent: topics[2]
+resource userEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2021-11-01' = {
+  parent: userEventsTopic
   name: 'audit'
   properties: {
     lockDuration: 'PT2M'
@@ -162,7 +162,7 @@ resource userEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscription
 // ------------------------------------------------------------------
 // Queues
 // ------------------------------------------------------------------
-resource mediaProcessingQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+resource mediaProcessingQueue 'Microsoft.ServiceBus/namespaces/queues@2021-11-01' = {
   parent: serviceBusNamespace
   name: 'media-processing'
   properties: {
@@ -180,9 +180,9 @@ resource mediaProcessingQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01
 }
 
 // ------------------------------------------------------------------
-// Shared access policies (listen + send per service)
+// Shared access policies (least-privilege per service)
 // ------------------------------------------------------------------
-resource deviceServiceSendRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2022-10-01-preview' = {
+resource deviceServiceSendRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
   parent: serviceBusNamespace
   name: 'DeviceServiceSend'
   properties: {
@@ -190,7 +190,7 @@ resource deviceServiceSendRule 'Microsoft.ServiceBus/namespaces/authorizationRul
   }
 }
 
-resource auditServiceListenRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2022-10-01-preview' = {
+resource auditServiceListenRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
   parent: serviceBusNamespace
   name: 'AuditServiceListen'
   properties: {
@@ -198,7 +198,7 @@ resource auditServiceListenRule 'Microsoft.ServiceBus/namespaces/authorizationRu
   }
 }
 
-resource functionsRootRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2022-10-01-preview' = {
+resource functionsRootRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
   parent: serviceBusNamespace
   name: 'FunctionsRoot'
   properties: {
@@ -208,10 +208,21 @@ resource functionsRootRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2
 
 // ------------------------------------------------------------------
 // Outputs
+// Fix C1: all connection strings are @secure() — passed to Key Vault
+//          by main.bicep, never stored as plain deployment outputs.
 // ------------------------------------------------------------------
 output serviceBusNamespaceId string = serviceBusNamespace.id
 output serviceBusNamespaceName string = serviceBusNamespace.name
 output serviceBusEndpoint string = serviceBusNamespace.properties.serviceBusEndpoint
+
+@description('Functions root connection string — passed directly to Key Vault. Never log.')
+@secure()
 output functionsConnectionString string = functionsRootRule.listKeys().primaryConnectionString
+
+@description('DeviceService send-only connection string — passed directly to Key Vault. Never log.')
+@secure()
 output deviceServiceSendConnectionString string = deviceServiceSendRule.listKeys().primaryConnectionString
+
+@description('AuditService listen-only connection string — passed directly to Key Vault. Never log.')
+@secure()
 output auditServiceListenConnectionString string = auditServiceListenRule.listKeys().primaryConnectionString

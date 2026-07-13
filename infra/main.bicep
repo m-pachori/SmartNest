@@ -4,13 +4,22 @@
 //
 //  Target scope: resourceGroup
 //  (Resource Group must already exist — created via CLI /
-//  setup scripts before this deployment runs.)
+//  pipeline before this deployment runs.)
+//
+//  Changes from initial version:
+//    Fix C1: Key Vault module wired in; all secrets are written
+//             to Key Vault at deploy time and never surfaced as
+//             plain Bicep outputs.
+//    Fix M1: appInsightsResourceId passed to APIM module.
+//    Fix M3: enableFreeTier passed to cosmos module (true only
+//             for dev via parameters file).
 //
 //  Usage:
 //    az deployment group create \
-//      --resource-group smartnest-rg \
+//      --resource-group smartnest-rg-dev \
 //      --template-file infra/main.bicep \
-//      --parameters @infra/parameters/dev.parameters.json
+//      --parameters @infra/parameters/dev.parameters.json \
+//      --parameters @/tmp/param-overrides.json
 // ============================================================
 targetScope = 'resourceGroup'
 
@@ -32,6 +41,9 @@ param cosmosAccountName string = '${projectName}-cosmos-${environment}'
 
 @description('Cosmos DB logical database name')
 param cosmosDatabaseName string = 'smartnest-db'
+
+@description('Enable Cosmos DB free tier. Valid only for the first Cosmos account in a subscription. Set true for dev, false for staging/prod.')
+param cosmosEnableFreeTier bool = false
 
 @description('Service Bus namespace name')
 param serviceBusNamespaceName string = '${projectName}-bus-${environment}'
@@ -63,6 +75,9 @@ param apiAppClientId string
 
 @description('Email address for Azure Monitor alert notifications')
 param monitorAlertEmailAddress string
+
+@description('Key Vault name (3–24 alphanumeric and hyphens, globally unique)')
+param keyVaultName string = '${projectName}-kv-${environment}'
 
 // ------------------------------------------------------------------
 // Shared Tags — applied to every resource
@@ -97,6 +112,7 @@ module cosmosModule 'modules/cosmos-db.bicep' = {
     location: location
     accountName: cosmosAccountName
     databaseName: cosmosDatabaseName
+    enableFreeTier: cosmosEnableFreeTier    // Fix M3: controlled per environment
     tags: commonTags
   }
 }
@@ -127,6 +143,7 @@ module storageModule 'modules/storage.bicep' = {
 
 // ------------------------------------------------------------------
 // Module: API Management (Developer tier)
+// Fix M1: appInsightsResourceId now passed (was appInsightsConnectionString)
 // ------------------------------------------------------------------
 module apimModule 'modules/apim.bicep' = {
   name: 'deploy-apim'
@@ -137,6 +154,7 @@ module apimModule 'modules/apim.bicep' = {
     publisherName: apimPublisherName
     tenantId: tenantId
     apiClientId: apiAppClientId
+    appInsightsResourceId: appInsightsModule.outputs.appInsightsId      // Fix M1
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
     appInsightsInstrumentationKey: appInsightsModule.outputs.instrumentationKey
     tags: commonTags
@@ -160,7 +178,31 @@ module monitorModule 'modules/monitor.bicep' = {
 }
 
 // ------------------------------------------------------------------
+// Module: Key Vault — stores all secrets; never expose plain values
+// Fix C1: all secrets from cosmos/storage/servicebus modules are
+//          written here. Outputs below return Key Vault secret URIs
+//          only, not the raw secret values.
+// ------------------------------------------------------------------
+module keyVaultModule 'modules/key-vault.bicep' = {
+  name: 'deploy-key-vault'
+  params: {
+    location: location
+    keyVaultName: keyVaultName
+    apimPrincipalId: apimModule.outputs.apimManagedIdentityPrincipalId
+    cosmosPrimaryKey: cosmosModule.outputs.cosmosPrimaryKey
+    storageConnectionString: storageModule.outputs.storageConnectionString
+    serviceBusFunctionsConnectionString: serviceBusModule.outputs.functionsConnectionString
+    serviceBusDeviceSvcSendConnectionString: serviceBusModule.outputs.deviceServiceSendConnectionString
+    serviceBusAuditSvcListenConnectionString: serviceBusModule.outputs.auditServiceListenConnectionString
+    tags: commonTags
+  }
+  dependsOn: [ apimModule, cosmosModule, storageModule, serviceBusModule ]
+}
+
+// ------------------------------------------------------------------
 // Outputs — consumed by CI/CD pipelines and developer scripts
+// Fix C1: no secret values are output here. Use Key Vault secret URIs
+//          to wire Function App settings via Key Vault references.
 // ------------------------------------------------------------------
 
 // App Insights
@@ -168,24 +210,26 @@ output appInsightsConnectionString string = appInsightsModule.outputs.connection
 output appInsightsInstrumentationKey string = appInsightsModule.outputs.instrumentationKey
 output logAnalyticsWorkspaceId string = appInsightsModule.outputs.logAnalyticsWorkspaceId
 
-// Cosmos DB
+// Cosmos DB (non-secret)
 output cosmosEndpoint string = cosmosModule.outputs.cosmosEndpoint
 output cosmosAccountName string = cosmosModule.outputs.cosmosAccountName
-@description('Primary key — store in Key Vault; do not log')
-output cosmosPrimaryKey string = cosmosModule.outputs.cosmosPrimaryKey
 
-// Service Bus
+// Service Bus (non-secret)
 output serviceBusEndpoint string = serviceBusModule.outputs.serviceBusEndpoint
 output serviceBusNamespaceName string = serviceBusModule.outputs.serviceBusNamespaceName
-@description('Functions root connection string — store in Key Vault; do not log')
-output serviceBusFunctionsConnectionString string = serviceBusModule.outputs.functionsConnectionString
 
-// Storage
+// Storage (non-secret)
 output storagePrimaryBlobEndpoint string = storageModule.outputs.primaryBlobEndpoint
 output storageAccountName string = storageModule.outputs.storageAccountName
-@description('Storage connection string — store in Key Vault; do not log')
-output storageConnectionString string = storageModule.outputs.storageConnectionString
 
 // APIM
 output apimGatewayUrl string = apimModule.outputs.apimGatewayUrl
 output apimManagedIdentityPrincipalId string = apimModule.outputs.apimManagedIdentityPrincipalId
+
+// Key Vault — reference URIs for wiring into Function App settings
+output keyVaultUri string = keyVaultModule.outputs.keyVaultUri
+output cosmosPrimaryKeySecretUri string = keyVaultModule.outputs.cosmosPrimaryKeySecretUri
+output storageConnectionStringSecretUri string = keyVaultModule.outputs.storageConnectionStringSecretUri
+output serviceBusFunctionsSecretUri string = keyVaultModule.outputs.serviceBusFunctionsSecretUri
+output serviceBusDeviceSvcSendSecretUri string = keyVaultModule.outputs.serviceBusDeviceSvcSendSecretUri
+output serviceBusAuditSvcListenSecretUri string = keyVaultModule.outputs.serviceBusAuditSvcListenSecretUri

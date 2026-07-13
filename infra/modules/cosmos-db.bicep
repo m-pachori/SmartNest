@@ -2,6 +2,13 @@
 //  SmartNest — Cosmos DB Module
 //  Serverless capacity mode, one database, one container per
 //  bounded context.
+//
+//  Fix H3: all API versions now use stable GA releases.
+//  Fix M3: enableFreeTier is now a param (default false);
+//           pass true only in dev.parameters.json.
+//  Fix C1: cosmosPrimaryKey is @secure() and NOT output as
+//           plain text — caller (main.bicep) passes it to the
+//           Key Vault module.
 // ============================================================
 @description('Azure region for the Cosmos DB account')
 param location string
@@ -12,11 +19,15 @@ param accountName string
 @description('Logical database name')
 param databaseName string = 'smartnest-db'
 
+@description('Enable Cosmos DB free tier. Only valid for the first Cosmos account in a subscription. Set true for dev only.')
+param enableFreeTier bool = false
+
 @description('Resource tags')
 param tags object = {}
 
 // ------------------------------------------------------------------
 // Cosmos DB Account — Serverless capacity mode
+// Fix H3: stable GA API version 2023-11-15 (already stable; kept)
 // ------------------------------------------------------------------
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' = {
   name: accountName
@@ -39,7 +50,10 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' = {
     capabilities: [
       { name: 'EnableServerless' }
     ]
-    enableFreeTier: true   // First Cosmos DB account in subscription gets free tier
+    // M3: enableFreeTier is now parameterised — only dev should set this true.
+    // Free tier is silently ignored if another Cosmos account already claims it
+    // in the same subscription (staging/prod default to false).
+    enableFreeTier: enableFreeTier
     backupPolicy: {
       type: 'Periodic'
       periodicModeProperties: {
@@ -119,9 +133,15 @@ resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/co
 
 // ------------------------------------------------------------------
 // Outputs
+// Fix C1: cosmosPrimaryKey is marked @secure() — the value is passed
+//          to the Key Vault module by main.bicep and is NOT stored in
+//          deployment history as a plain string.
 // ------------------------------------------------------------------
 output cosmosAccountId string = cosmosAccount.id
 output cosmosAccountName string = cosmosAccount.name
 output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
-output cosmosPrimaryKey string = cosmosAccount.listKeys().primaryMasterKey
 output cosmosDatabaseName string = cosmosDatabase.name
+
+@description('Primary key — passed directly to the Key Vault module. Never log or store elsewhere.')
+@secure()
+output cosmosPrimaryKey string = cosmosAccount.listKeys().primaryMasterKey

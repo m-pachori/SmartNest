@@ -11,6 +11,12 @@
     "projectName": {
       "value": "smartnest"
     },
+    "cosmosEnableFreeTier": {
+      "value": false
+    },
+    "keyVaultName": {
+      "value": "smartnest-kv-prod"
+    },
     "cosmosAccountName": {
       "value": "smartnest-cosmos-prod"
     },

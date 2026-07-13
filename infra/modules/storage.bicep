@@ -1,7 +1,11 @@
 // ============================================================
 //  SmartNest — Storage Module
-//  Azure Blob Storage with media-uploads and processed-media
-//  containers.
+//  Azure Blob Storage with media-uploads, processed-media, and
+//  snapshots containers.
+//
+//  Fix C1: storageConnectionString is @secure() and is NOT
+//           returned as a plain output — caller (main.bicep)
+//           passes it directly to the Key Vault module.
 // ============================================================
 @description('Azure region')
 param location string
@@ -72,7 +76,6 @@ resource mediaUploadsContainer 'Microsoft.Storage/storageAccounts/blobServices/c
   name: 'media-uploads'
   properties: {
     publicAccess: 'None'
-    // Immutable policies and lifecycle rules can be added later
   }
 }
 
@@ -95,8 +98,13 @@ resource snapshotsContainer 'Microsoft.Storage/storageAccounts/blobServices/cont
 
 // ------------------------------------------------------------------
 // Outputs
+// Fix C1: storageConnectionString is @secure() — passed to the Key
+//          Vault module by main.bicep, never stored in plain text.
 // ------------------------------------------------------------------
 output storageAccountId string = storageAccount.id
 output storageAccountName string = storageAccount.name
 output primaryBlobEndpoint string = storageAccount.properties.primaryEndpoints.blob
+
+@description('Connection string — passed directly to Key Vault module. Never log or store elsewhere.')
+@secure()
 output storageConnectionString string = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
