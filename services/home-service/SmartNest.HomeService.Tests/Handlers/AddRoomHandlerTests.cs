@@ -14,27 +14,26 @@ namespace SmartNest.HomeService.Tests.Handlers;
 
 public class AddRoomHandlerTests
 {
-    private static CurrentUser MakeUser(string[] roles, string? homeId) => new()
+    private static CurrentUser MakeUser(string[] roles, string userId = "user-1") => new()
     {
-        UserId = "user-1",
+        UserId = userId,
         Roles = roles,
-        HomeId = homeId,
     };
 
-    private static Home MakeHome() => Home.Create(
-        "owner-1", "My Home",
+    private static Home MakeHome(string ownerId = "user-1") => Home.Create(
+        ownerId, "My Home",
         new Address("123 Main St", "Springfield", "IL", "62701", "USA"),
         new HomeSettings("America/Chicago", TemperatureUnit.Fahrenheit));
 
     [Fact]
     public async Task HandleAsync_AddsRoomAndPublishesRoomAddedEvent()
     {
-        var home = MakeHome();
+        var home = MakeHome(ownerId: "user-1");
         var repository = new Mock<IHomeRepository>();
         repository.Setup(r => r.GetAsync(home.HomeId, It.IsAny<CancellationToken>())).ReturnsAsync(home);
         var eventPublisher = new Mock<IEventPublisher>();
         var handler = new AddRoomHandler(repository.Object, new HomeEventPublisher(eventPublisher.Object));
-        var user = MakeUser(new[] { "SmartNest.Owner" }, home.HomeId);
+        var user = MakeUser(new[] { "SmartNest.Owner" }, userId: "user-1");
 
         var result = await handler.HandleAsync(user, home.HomeId, new AddRoomRequest("Kitchen", "kitchen"));
 
@@ -49,14 +48,29 @@ public class AddRoomHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_Throws_WhenCallerIsNotOwner()
+    public async Task HandleAsync_Throws_WhenCallerIsNotOwnerRole()
     {
         var repository = new Mock<IHomeRepository>();
         var eventPublisher = new Mock<IEventPublisher>();
         var handler = new AddRoomHandler(repository.Object, new HomeEventPublisher(eventPublisher.Object));
-        var user = MakeUser(new[] { "SmartNest.Technician" }, "home-1");
+        var user = MakeUser(new[] { "SmartNest.Technician" });
 
         var act = () => handler.HandleAsync(user, "home-1", new AddRoomRequest("Kitchen", null));
+
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task HandleAsync_Throws_WhenCallerDoesNotOwnHome()
+    {
+        var home = MakeHome(ownerId: "owner-1");
+        var repository = new Mock<IHomeRepository>();
+        repository.Setup(r => r.GetAsync(home.HomeId, It.IsAny<CancellationToken>())).ReturnsAsync(home);
+        var eventPublisher = new Mock<IEventPublisher>();
+        var handler = new AddRoomHandler(repository.Object, new HomeEventPublisher(eventPublisher.Object));
+        var user = MakeUser(new[] { "SmartNest.Owner" }, userId: "someone-else");
+
+        var act = () => handler.HandleAsync(user, home.HomeId, new AddRoomRequest("Kitchen", null));
 
         await act.Should().ThrowAsync<ForbiddenException>();
     }
@@ -68,7 +82,7 @@ public class AddRoomHandlerTests
         repository.Setup(r => r.GetAsync("home-1", It.IsAny<CancellationToken>())).ReturnsAsync((Home?)null);
         var eventPublisher = new Mock<IEventPublisher>();
         var handler = new AddRoomHandler(repository.Object, new HomeEventPublisher(eventPublisher.Object));
-        var user = MakeUser(new[] { "SmartNest.Owner" }, "home-1");
+        var user = MakeUser(new[] { "SmartNest.Owner" });
 
         var act = () => handler.HandleAsync(user, "home-1", new AddRoomRequest("Kitchen", null));
 
@@ -78,13 +92,13 @@ public class AddRoomHandlerTests
     [Fact]
     public async Task HandleAsync_Throws_WhenDuplicateRoomName()
     {
-        var home = MakeHome();
+        var home = MakeHome(ownerId: "user-1");
         home.AddRoom("Kitchen");
         var repository = new Mock<IHomeRepository>();
         repository.Setup(r => r.GetAsync(home.HomeId, It.IsAny<CancellationToken>())).ReturnsAsync(home);
         var eventPublisher = new Mock<IEventPublisher>();
         var handler = new AddRoomHandler(repository.Object, new HomeEventPublisher(eventPublisher.Object));
-        var user = MakeUser(new[] { "SmartNest.Owner" }, home.HomeId);
+        var user = MakeUser(new[] { "SmartNest.Owner" }, userId: "user-1");
 
         var act = () => handler.HandleAsync(user, home.HomeId, new AddRoomRequest("kitchen", null));
 

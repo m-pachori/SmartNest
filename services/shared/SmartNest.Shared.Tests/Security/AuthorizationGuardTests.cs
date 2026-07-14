@@ -62,4 +62,24 @@ public class AuthorizationGuardTests
 
         act.Should().Throw<ForbiddenException>();
     }
+
+    [Fact]
+    public void RequireOwnership_DoesNotThrow_WhenCallerIsResourceOwner()
+    {
+        var user = MakeUser(new[] { "SmartNest.Owner" }, "home-1");
+
+        var act = () => AuthorizationGuard.RequireOwnership(user, "user-1");
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void RequireOwnership_Throws_WhenCallerIsNotResourceOwner()
+    {
+        var user = MakeUser(new[] { "SmartNest.Owner" }, "home-1");
+
+        var act = () => AuthorizationGuard.RequireOwnership(user, "some-other-user");
+
+        act.Should().Throw<ForbiddenException>();
+    }
 }

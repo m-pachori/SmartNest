@@ -27,6 +27,12 @@ public static class AuthorizationGuard
     /// Throws <see cref="ForbiddenException"/> unless the caller's <c>homeId</c> claim
     /// matches <paramref name="resourceHomeId"/>.
     /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="RequireOwnership"/> where possible: the <c>homeId</c> optional
+    /// claim is not currently populated by Entra ID for this platform (no claim source is
+    /// configured - see infra/setup-entra.ps1), so this check should only be used once a
+    /// reliable claim source exists (Task 4 - Identity/Access Service).
+    /// </remarks>
     public static void RequireHomeIdMatch(CurrentUser user, string resourceHomeId)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -37,6 +43,25 @@ public static class AuthorizationGuard
             !string.Equals(user.HomeId, resourceHomeId, StringComparison.OrdinalIgnoreCase))
         {
             throw new ForbiddenException("Caller's homeId claim does not match the requested resource's homeId.");
+        }
+    }
+
+    /// <summary>
+    /// Throws <see cref="ForbiddenException"/> unless the caller (identified by the
+    /// token's subject/object-id claim) is the owner of the resource, as recorded in
+    /// storage. Use this instead of trusting a self-asserted <c>homeId</c> claim from the
+    /// token: the caller cannot forge <paramref name="resourceOwnerId"/> since it comes
+    /// from the loaded Cosmos DB document, not the request.
+    /// </summary>
+    public static void RequireOwnership(CurrentUser user, string resourceOwnerId)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        if (string.IsNullOrWhiteSpace(resourceOwnerId))
+            throw new ArgumentException("Resource ownerId is required.", nameof(resourceOwnerId));
+
+        if (!string.Equals(user.UserId, resourceOwnerId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ForbiddenException("Caller does not own this resource.");
         }
     }
 }

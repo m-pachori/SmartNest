@@ -12,15 +12,14 @@ namespace SmartNest.HomeService.Tests.Handlers;
 
 public class UpdateHomeHandlerTests
 {
-    private static CurrentUser MakeUser(string[] roles, string? homeId) => new()
+    private static CurrentUser MakeUser(string[] roles, string userId = "user-1") => new()
     {
-        UserId = "user-1",
+        UserId = userId,
         Roles = roles,
-        HomeId = homeId,
     };
 
-    private static Home MakeHome() => Home.Create(
-        "owner-1", "My Home",
+    private static Home MakeHome(string ownerId = "user-1") => Home.Create(
+        ownerId, "My Home",
         new Address("123 Main St", "Springfield", "IL", "62701", "USA"),
         new HomeSettings("America/Chicago", TemperatureUnit.Fahrenheit));
 
@@ -29,13 +28,13 @@ public class UpdateHomeHandlerTests
         "America/New_York", TemperatureUnit.Celsius);
 
     [Fact]
-    public async Task HandleAsync_UpdatesHome_WhenOwnerAndHomeIdMatch()
+    public async Task HandleAsync_UpdatesHome_WhenOwnerRoleAndCallerOwnsHome()
     {
-        var home = MakeHome();
+        var home = MakeHome(ownerId: "user-1");
         var repository = new Mock<IHomeRepository>();
         repository.Setup(r => r.GetAsync(home.HomeId, It.IsAny<CancellationToken>())).ReturnsAsync(home);
         var handler = new UpdateHomeHandler(repository.Object);
-        var user = MakeUser(new[] { "SmartNest.Owner" }, home.HomeId);
+        var user = MakeUser(new[] { "SmartNest.Owner" }, userId: "user-1");
 
         var result = await handler.HandleAsync(user, home.HomeId, MakeRequest());
 
@@ -45,11 +44,11 @@ public class UpdateHomeHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_Throws_WhenCallerIsNotOwner()
+    public async Task HandleAsync_Throws_WhenCallerIsNotOwnerRole()
     {
         var repository = new Mock<IHomeRepository>();
         var handler = new UpdateHomeHandler(repository.Object);
-        var user = MakeUser(new[] { "SmartNest.Technician" }, "home-1");
+        var user = MakeUser(new[] { "SmartNest.Technician" });
 
         var act = () => handler.HandleAsync(user, "home-1", MakeRequest());
 
@@ -57,13 +56,15 @@ public class UpdateHomeHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_Throws_WhenHomeIdClaimDoesNotMatch()
+    public async Task HandleAsync_Throws_WhenCallerDoesNotOwnHome()
     {
+        var home = MakeHome(ownerId: "owner-1");
         var repository = new Mock<IHomeRepository>();
+        repository.Setup(r => r.GetAsync(home.HomeId, It.IsAny<CancellationToken>())).ReturnsAsync(home);
         var handler = new UpdateHomeHandler(repository.Object);
-        var user = MakeUser(new[] { "SmartNest.Owner" }, "different-home-id");
+        var user = MakeUser(new[] { "SmartNest.Owner" }, userId: "someone-else");
 
-        var act = () => handler.HandleAsync(user, "home-1", MakeRequest());
+        var act = () => handler.HandleAsync(user, home.HomeId, MakeRequest());
 
         await act.Should().ThrowAsync<ForbiddenException>();
     }
@@ -74,7 +75,7 @@ public class UpdateHomeHandlerTests
         var repository = new Mock<IHomeRepository>();
         repository.Setup(r => r.GetAsync("home-1", It.IsAny<CancellationToken>())).ReturnsAsync((Home?)null);
         var handler = new UpdateHomeHandler(repository.Object);
-        var user = MakeUser(new[] { "SmartNest.Owner" }, "home-1");
+        var user = MakeUser(new[] { "SmartNest.Owner" });
 
         var act = () => handler.HandleAsync(user, "home-1", MakeRequest());
 

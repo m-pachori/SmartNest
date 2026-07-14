@@ -4,7 +4,8 @@ using SmartNest.Shared.Security;
 namespace SmartNest.HomeService.Handlers;
 
 /// <summary>
-/// Handles <c>DELETE /homes/{id}/rooms/{roomId}</c>. Requires Owner role + matching homeId claim.
+/// Handles <c>DELETE /homes/{id}/rooms/{roomId}</c>. Requires Owner role + caller must own
+/// the home (verified against the loaded Cosmos document's OwnerId, not a token claim).
 /// No domain event is published — only HomeCreated, RoomAdded, and HomeDeleted are defined
 /// in the platform's event catalogue for the Home bounded context (see smartnest-plan.md).
 /// </summary>
@@ -30,10 +31,11 @@ public sealed class RemoveRoomHandler
             throw new ArgumentException("RoomId is required.", nameof(roomId));
 
         AuthorizationGuard.RequireRole(user, "SmartNest.Owner");
-        AuthorizationGuard.RequireHomeIdMatch(user, homeId);
 
         var home = await _repository.GetAsync(homeId, cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Home '{homeId}' was not found.");
+
+        AuthorizationGuard.RequireOwnership(user, home.OwnerId);
 
         home.RemoveRoom(roomId);
 

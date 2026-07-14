@@ -4,7 +4,7 @@ using SmartNest.Shared.Security;
 
 namespace SmartNest.HomeService.Handlers;
 
-/// <summary>Handles <c>DELETE /homes/{id}</c>. Requires Owner role + matching homeId claim.</summary>
+/// <summary>Handles <c>DELETE /homes/{id}</c>. Requires Owner role + caller must own the home.</summary>
 public sealed class DeleteHomeHandler
 {
     private readonly IHomeRepository _repository;
@@ -23,10 +23,11 @@ public sealed class DeleteHomeHandler
             throw new ArgumentException("HomeId is required.", nameof(homeId));
 
         AuthorizationGuard.RequireRole(user, "SmartNest.Owner");
-        AuthorizationGuard.RequireHomeIdMatch(user, homeId);
 
         var home = await _repository.GetAsync(homeId, cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Home '{homeId}' was not found.");
+
+        AuthorizationGuard.RequireOwnership(user, home.OwnerId);
 
         home.MarkDeleted();
 

@@ -12,6 +12,7 @@ internal sealed class HomeDocument
     [JsonProperty("id")]
     public string Id { get; set; } = default!;
 
+    [JsonProperty("homeId")]
     public string HomeId { get; set; } = default!;
 
     public string OwnerId { get; set; } = default!;
