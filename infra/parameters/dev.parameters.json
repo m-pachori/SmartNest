@@ -45,13 +45,13 @@
       "value": "SmartNest Admin"
     },
     "tenantId": {
-      "value": "YOUR_TENANT_ID"
+      "value": "900ee199-9748-45a2-ba75-8094bcb89a53"
     },
     "apiAppClientId": {
-      "value": "YOUR_API_APP_CLIENT_ID"
+      "value": "cc03cbc9-b1e3-47cc-9666-f4b80ec5b255"
     },
     "monitorAlertEmailAddress": {
-      "value": "alerts@smartnest.local"
+      "value": "manoj.pachori@ibm.com"
     }
   }
 }
