@@ -35,6 +35,7 @@ trigger:
   paths:
     include:
       - infra/**
+      - services/**
       - azure-pipelines.yml
 
 pr:
@@ -44,6 +45,7 @@ pr:
   paths:
     include:
       - infra/**
+      - services/**
 
 variables:
   - group: smartnest-common        # shared secrets / config (see header)
@@ -59,6 +61,10 @@ variables:
     value: smartnest-rg-prod
   - name: location
     value: eastus
+  - name: homeServiceSolution
+    value: services/SmartNest.sln
+  - name: homeServiceProject
+    value: services/home-service/SmartNest.HomeService/SmartNest.HomeService.csproj
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 1 — Validate (runs on every push / PR)
@@ -153,6 +159,65 @@ stages:
                 rm -f /tmp/param-overrides.json
 
 # ─────────────────────────────────────────────────────────────
+# STAGE 1b — Build & Test Home Service (runs in parallel with
+# Validate on every push / PR; independent of the infra stages)
+# ─────────────────────────────────────────────────────────────
+  - stage: BuildAndTestHomeService
+    displayName: '🧪 Build & Test — Home Service'
+    jobs:
+      - job: BuildAndTest
+        displayName: 'dotnet build + test + publish'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: UseDotNet@2
+            displayName: 'Use .NET 8 SDK'
+            inputs:
+              packageType: sdk
+              version: '8.0.x'
+
+          - script: dotnet restore $(homeServiceSolution)
+            displayName: 'dotnet restore'
+
+          - script: dotnet build $(homeServiceSolution) --configuration Release --no-restore
+            displayName: 'dotnet build'
+
+          - script: |
+              dotnet test $(homeServiceSolution) \
+                --configuration Release --no-build \
+                --logger trx --results-directory $(Agent.TempDirectory)/testresults
+            displayName: 'dotnet test'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish test results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'VSTest'
+              testResultsFiles: '**/*.trx'
+              searchFolder: '$(Agent.TempDirectory)/testresults'
+
+          - script: |
+              dotnet publish $(homeServiceProject) \
+                --configuration Release --no-build \
+                --output $(Build.ArtifactStagingDirectory)/home-service
+            displayName: 'dotnet publish Home Service'
+
+          - task: ArchiveFiles@2
+            displayName: 'Archive Home Service publish output'
+            inputs:
+              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/home-service'
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: '$(Build.ArtifactStagingDirectory)/home-service.zip'
+              replaceExistingArchive: true
+
+          - publish: $(Build.ArtifactStagingDirectory)/home-service.zip
+            artifact: home-service-package
+            displayName: 'Publish Home Service package artifact'
+
+# ─────────────────────────────────────────────────────────────
 # STAGE 2 — What-If (runs on every push / PR, informational)
 # ─────────────────────────────────────────────────────────────
   - stage: WhatIf
@@ -211,7 +276,9 @@ stages:
 # ─────────────────────────────────────────────────────────────
   - stage: DeployDev
     displayName: '🚀 Deploy — Dev'
-    dependsOn: WhatIf
+    dependsOn:
+      - WhatIf
+      - BuildAndTestHomeService
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
       - deployment: DeployDevInfra
@@ -257,6 +324,18 @@ stages:
                         --output table
 
                       rm -f /tmp/param-overrides.json
+
+                - download: current
+                  artifact: home-service-package
+                  displayName: 'Download Home Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Home Service Function App — dev'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-home-svc-dev'
+                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 4 — Deploy Staging  (manual approval gate)
@@ -310,6 +389,18 @@ stages:
 
                       rm -f /tmp/param-overrides.json
 
+                - download: current
+                  artifact: home-service-package
+                  displayName: 'Download Home Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Home Service Function App — staging'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-home-svc-staging'
+                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
+
 # ─────────────────────────────────────────────────────────────
 # STAGE 5 — Deploy Prod  (manual approval gate)
 # ─────────────────────────────────────────────────────────────
@@ -361,3 +452,15 @@ stages:
                         --output table
 
                       rm -f /tmp/param-overrides.json
+
+                - download: current
+                  artifact: home-service-package
+                  displayName: 'Download Home Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Home Service Function App — prod'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-home-svc-prod'
+                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'

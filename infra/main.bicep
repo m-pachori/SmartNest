@@ -79,6 +79,12 @@ param monitorAlertEmailAddress string
 @description('Key Vault name (3–24 alphanumeric and hyphens, globally unique)')
 param keyVaultName string = '${projectName}-kv-${environment}'
 
+@description('Home Service Function App name')
+param homeServiceFunctionAppName string = '${projectName}-home-svc-${environment}'
+
+@description('Home Service Function App hosting plan name')
+param homeServiceHostingPlanName string = '${projectName}-home-svc-plan-${environment}'
+
 // ------------------------------------------------------------------
 // Shared Tags - applied to every resource
 // ------------------------------------------------------------------
@@ -200,6 +206,121 @@ module keyVaultModule 'modules/key-vault.bicep' = {
 }
 
 // ------------------------------------------------------------------
+// Module: Home Service Function App (Task 2)
+// Consumption plan, .NET 8 Isolated. Reuses the shared platform
+// storage account, Cosmos DB, Service Bus, and App Insights.
+// ------------------------------------------------------------------
+module homeFunctionAppModule 'modules/function-app.bicep' = {
+  name: 'deploy-home-function-app'
+  params: {
+    location: location
+    serviceName: 'home'
+    functionAppName: homeServiceFunctionAppName
+    hostingPlanName: homeServiceHostingPlanName
+    storageConnectionStringSecretUri: keyVaultModule.outputs.storageConnectionStringSecretUri
+    cosmosEndpoint: cosmosModule.outputs.cosmosEndpoint
+    cosmosDatabaseName: cosmosDatabaseName
+    cosmosPrimaryKeySecretUri: keyVaultModule.outputs.cosmosPrimaryKeySecretUri
+    serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusFunctionsSecretUri
+    appInsightsConnectionString: appInsightsModule.outputs.connectionString
+    additionalAppSettings: {
+      'Cosmos:HomesContainerName': 'homes'
+    }
+    tags: commonTags
+  }
+}
+
+// ------------------------------------------------------------------
+// Grant the Home Service Function App's managed identity access to
+// read secrets from Key Vault (required — Key Vault uses RBAC, not
+// access policies; see infra/modules/key-vault.bicep).
+// ------------------------------------------------------------------
+var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+
+resource existingKeyVaultForRoleAssignment 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+  dependsOn: [ keyVaultModule ]
+}
+
+resource homeFunctionAppKvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(existingKeyVaultForRoleAssignment.id, homeServiceFunctionAppName, kvSecretsUserRoleId)
+  scope: existingKeyVaultForRoleAssignment
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalId: homeFunctionAppModule.outputs.functionAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ------------------------------------------------------------------
+// Store the Home Service Function App's default host key in Key
+// Vault so APIM can reference it as a named value (see apim-api.bicep).
+// ------------------------------------------------------------------
+resource homeSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: existingKeyVaultForRoleAssignment
+  name: 'home-svc-function-key'
+  properties: {
+    value: homeFunctionAppModule.outputs.defaultFunctionKey
+  }
+}
+
+// ------------------------------------------------------------------
+// Module: Register the Home Service API in APIM (route prefix /homes)
+// ------------------------------------------------------------------
+module homeApiModule 'modules/apim-api.bicep' = {
+  name: 'deploy-home-api'
+  params: {
+    apimServiceName: apimModule.outputs.apimServiceName
+    apiName: 'homes'
+    apiDisplayName: 'Home Service'
+    backendHostName: homeFunctionAppModule.outputs.functionAppDefaultHostName
+    functionKeySecretUri: homeSvcFunctionKeySecret.properties.secretUri
+    productName: 'smartnest-backend'
+    operations: [
+      { name: 'create-home', displayName: 'Create Home', method: 'POST', urlTemplate: '/homes' }
+      {
+        name: 'get-home'
+        displayName: 'Get Home'
+        method: 'GET'
+        urlTemplate: '/homes/{id}'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+      {
+        name: 'update-home'
+        displayName: 'Update Home'
+        method: 'PUT'
+        urlTemplate: '/homes/{id}'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+      {
+        name: 'delete-home'
+        displayName: 'Delete Home'
+        method: 'DELETE'
+        urlTemplate: '/homes/{id}'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+      {
+        name: 'add-room'
+        displayName: 'Add Room'
+        method: 'POST'
+        urlTemplate: '/homes/{id}/rooms'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+      {
+        name: 'remove-room'
+        displayName: 'Remove Room'
+        method: 'DELETE'
+        urlTemplate: '/homes/{id}/rooms/{roomId}'
+        templateParameters: [
+          { name: 'id', type: 'string', required: true }
+          { name: 'roomId', type: 'string', required: true }
+        ]
+      }
+    ]
+  }
+}
+
+// ------------------------------------------------------------------
 // Outputs - consumed by CI/CD pipelines and developer scripts
 // Fix C1: no secret values are output here. Use Key Vault secret URIs
 //          to wire Function App settings via Key Vault references.
@@ -233,3 +354,8 @@ output storageConnectionStringSecretUri string = keyVaultModule.outputs.storageC
 output serviceBusFunctionsSecretUri string = keyVaultModule.outputs.serviceBusFunctionsSecretUri
 output serviceBusDeviceSvcSendSecretUri string = keyVaultModule.outputs.serviceBusDeviceSvcSendSecretUri
 output serviceBusAuditSvcListenSecretUri string = keyVaultModule.outputs.serviceBusAuditSvcListenSecretUri
+
+// Home Service (Task 2)
+output homeServiceFunctionAppName string = homeFunctionAppModule.outputs.functionAppName
+output homeServiceFunctionAppDefaultHostName string = homeFunctionAppModule.outputs.functionAppDefaultHostName
+output homeServiceApiName string = homeApiModule.outputs.apiName
