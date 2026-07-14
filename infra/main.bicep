@@ -1,9 +1,9 @@
-// ============================================================
-//  SmartNest — Main Bicep Orchestration
+﻿// ============================================================
+//  SmartNest - Main Bicep Orchestration
 //  Deploys all Azure resources for the SmartNest platform.
 //
 //  Target scope: resourceGroup
-//  (Resource Group must already exist — created via CLI /
+//  (Resource Group must already exist - created via CLI /
 //  pipeline before this deployment runs.)
 //
 //  Changes from initial version:
@@ -33,7 +33,7 @@ param location string = resourceGroup().location
 @allowed([ 'dev', 'staging', 'prod' ])
 param environment string = 'dev'
 
-@description('Project name — used as a prefix in resource names')
+@description('Project name - used as a prefix in resource names')
 param projectName string = 'smartnest'
 
 @description('Cosmos DB account name')
@@ -67,7 +67,7 @@ param apimPublisherEmail string
 @description('APIM publisher display name')
 param apimPublisherName string = 'SmartNest Admin'
 
-@description('Azure AD Tenant ID — injected into JWT validation policy')
+@description('Azure AD Tenant ID - injected into JWT validation policy')
 param tenantId string
 
 @description('Azure AD App Registration Client ID for smartnest-api')
@@ -80,7 +80,7 @@ param monitorAlertEmailAddress string
 param keyVaultName string = '${projectName}-kv-${environment}'
 
 // ------------------------------------------------------------------
-// Shared Tags — applied to every resource
+// Shared Tags - applied to every resource
 // ------------------------------------------------------------------
 var commonTags = {
   project: projectName
@@ -91,7 +91,7 @@ var commonTags = {
 
 // ------------------------------------------------------------------
 // Module: Application Insights + Log Analytics
-// (deployed first — other modules consume the connection string)
+// (deployed first - other modules consume the connection string)
 // ------------------------------------------------------------------
 module appInsightsModule 'modules/app-insights.bicep' = {
   name: 'deploy-app-insights'
@@ -178,7 +178,7 @@ module monitorModule 'modules/monitor.bicep' = {
 }
 
 // ------------------------------------------------------------------
-// Module: Key Vault — stores all secrets; never expose plain values
+// Module: Key Vault - stores all secrets; never expose plain values
 // Fix C1: all secrets from cosmos/storage/servicebus modules are
 //          written here. Outputs below return Key Vault secret URIs
 //          only, not the raw secret values.
@@ -200,7 +200,7 @@ module keyVaultModule 'modules/key-vault.bicep' = {
 }
 
 // ------------------------------------------------------------------
-// Outputs — consumed by CI/CD pipelines and developer scripts
+// Outputs - consumed by CI/CD pipelines and developer scripts
 // Fix C1: no secret values are output here. Use Key Vault secret URIs
 //          to wire Function App settings via Key Vault references.
 // ------------------------------------------------------------------
@@ -226,7 +226,7 @@ output storageAccountName string = storageModule.outputs.storageAccountName
 output apimGatewayUrl string = apimModule.outputs.apimGatewayUrl
 output apimManagedIdentityPrincipalId string = apimModule.outputs.apimManagedIdentityPrincipalId
 
-// Key Vault — reference URIs for wiring into Function App settings
+// Key Vault - reference URIs for wiring into Function App settings
 output keyVaultUri string = keyVaultModule.outputs.keyVaultUri
 output cosmosPrimaryKeySecretUri string = keyVaultModule.outputs.cosmosPrimaryKeySecretUri
 output storageConnectionStringSecretUri string = keyVaultModule.outputs.storageConnectionStringSecretUri

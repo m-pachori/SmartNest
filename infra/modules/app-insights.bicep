@@ -1,5 +1,5 @@
-// ============================================================
-//  SmartNest — Application Insights Module
+﻿// ============================================================
+//  SmartNest - Application Insights Module
 //  Log Analytics Workspace + Application Insights workspace.
 //  All Function Apps share one Application Insights instance.
 // ============================================================
@@ -31,7 +31,7 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10
       enableLogAccessUsingOnlyResourcePermissions: true
     }
     workspaceCapping: {
-      dailyQuotaGb: 0.2   // ~200 MB/day cap — protects against runaway ingestion
+      dailyQuotaGb: 0.2   // ~200 MB/day cap - protects against runaway ingestion
     }
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
@@ -39,7 +39,7 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10
 }
 
 // ------------------------------------------------------------------
-// Application Insights — workspace-based (modern mode)
+// Application Insights - workspace-based (modern mode)
 // ------------------------------------------------------------------
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
@@ -54,7 +54,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     RetentionInDays: 30
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
-    // Adaptive sampling — reduces volume when ingestion nears free quota
+    // Adaptive sampling - reduces volume when ingestion nears free quota
     SamplingPercentage: null   // null = adaptive (recommended)
     DisableIpMasking: false
   }

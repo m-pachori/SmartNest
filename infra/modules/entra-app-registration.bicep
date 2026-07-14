@@ -1,11 +1,11 @@
-// ============================================================
-//  SmartNest — Entra ID (Azure AD) App Registrations
+﻿// ============================================================
+//  SmartNest - Entra ID (Azure AD) App Registrations
 //
 //  NOTE: Azure AD objects (App Registrations, App Roles,
 //  optional claims) are tenant-level resources and CANNOT be
 //  created by ARM/Bicep subscription-scoped or resource-group-
 //  scoped deployments. They must be provisioned via one of:
-//    a) Azure Portal — manual, one-time setup
+//    a) Azure Portal - manual, one-time setup
 //    b) Microsoft Graph API (az rest / curl)
 //    c) Terraform azuread provider
 //    d) Azure CLI (az ad app create …)
@@ -20,13 +20,13 @@
 // ============================================================
 
 // This file is intentionally a documentation module.
-// It outputs nothing and deploys nothing — but it keeps the
+// It outputs nothing and deploys nothing - but it keeps the
 // desired Entra state co-located with the rest of the infra
 // code so future changes are made here first.
 
 /*
 ────────────────────────────────────────────────────────────────
-  STEP 1 — Create the API App Registration (smartnest-api)
+  STEP 1 - Create the API App Registration (smartnest-api)
 ────────────────────────────────────────────────────────────────
   az ad app create \
     --display-name "smartnest-api" \
@@ -36,7 +36,7 @@
   # Note the returned appId (API_APP_CLIENT_ID)
 
 ────────────────────────────────────────────────────────────────
-  STEP 2 — Define App Roles on smartnest-api
+  STEP 2 - Define App Roles on smartnest-api
 ────────────────────────────────────────────────────────────────
   API_APP_CLIENT_ID="<appId from step 1>"
 
@@ -45,7 +45,7 @@
     --app-roles '[
       {
         "allowedMemberTypes": ["Application","User"],
-        "description": "Full access — home owner",
+        "description": "Full access - home owner",
         "displayName": "SmartNest Owner",
         "id": "00000000-0000-0000-0000-000000000001",
         "isEnabled": true,
@@ -70,7 +70,7 @@
     ]'
 
 ────────────────────────────────────────────────────────────────
-  STEP 3 — Add homeId optional claim to the API App Registration
+  STEP 3 - Add homeId optional claim to the API App Registration
 ────────────────────────────────────────────────────────────────
   az ad app update \
     --id $API_APP_CLIENT_ID \
@@ -94,7 +94,7 @@
     }'
 
 ────────────────────────────────────────────────────────────────
-  STEP 4 — Create the client App Registration (smartnest-client)
+  STEP 4 - Create the client App Registration (smartnest-client)
 ────────────────────────────────────────────────────────────────
   az ad app create \
     --display-name "smartnest-client" \
@@ -125,7 +125,7 @@
   done
 
 ────────────────────────────────────────────────────────────────
-  STEP 5 — After completing steps 1-4, update dev.parameters.json
+  STEP 5 - After completing steps 1-4, update dev.parameters.json
 ────────────────────────────────────────────────────────────────
   - Set "tenantId"       → your Azure AD Tenant ID
   - Set "apiAppClientId" → $API_APP_CLIENT_ID
