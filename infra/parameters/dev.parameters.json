@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+    "environment": {
+      "value": "dev"
+    },
+    "projectName": {
+      "value": "smartnest"
+    },
+    "cosmosEnableFreeTier": {
+      "value": true
+    },
+    "keyVaultName": {
+      "value": "smartnest-kv-dev"
+    },
+    "cosmosAccountName": {
+      "value": "smartnest-cosmos"
+    },
+    "cosmosDatabaseName": {
+      "value": "smartnest-db"
+    },
+    "serviceBusNamespaceName": {
+      "value": "smartnest-bus"
+    },
+    "storageAccountName": {
+      "value": "smartneststorage"
+    },
+    "appInsightsName": {
+      "value": "smartnest-insights"
+    },
+    "logAnalyticsWorkspaceName": {
+      "value": "smartnest-logs"
+    },
+    "apimName": {
+      "value": "smartnest-apim"
+    },
+    "apimPublisherEmail": {
+      "value": "admin@smartnest.local"
+    },
+    "apimPublisherName": {
+      "value": "SmartNest Admin"
+    },
+    "tenantId": {
+      "value": "900ee199-9748-45a2-ba75-8094bcb89a53"
+    },
+    "apiAppClientId": {
+      "value": "cc03cbc9-b1e3-47cc-9666-f4b80ec5b255"
+    },
+    "monitorAlertEmailAddress": {
+      "value": "manoj.pachori@ibm.com"
+    }
+  }
+}

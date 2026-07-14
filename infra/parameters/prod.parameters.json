@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "projectName": {
+      "value": "smartnest"
+    },
+    "cosmosEnableFreeTier": {
+      "value": false
+    },
+    "keyVaultName": {
+      "value": "smartnest-kv-prod"
+    },
+    "cosmosAccountName": {
+      "value": "smartnest-cosmos-prod"
+    },
+    "cosmosDatabaseName": {
+      "value": "smartnest-db"
+    },
+    "serviceBusNamespaceName": {
+      "value": "smartnest-bus-prod"
+    },
+    "storageAccountName": {
+      "value": "smartneststorageprod"
+    },
+    "appInsightsName": {
+      "value": "smartnest-insights-prod"
+    },
+    "logAnalyticsWorkspaceName": {
+      "value": "smartnest-logs-prod"
+    },
+    "apimName": {
+      "value": "smartnest-apim-prod"
+    },
+    "apimPublisherName": {
+      "value": "SmartNest Admin"
+    }
+  }
+}

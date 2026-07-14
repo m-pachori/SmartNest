@@ -1,0 +1,43 @@
+<!--
+  APIM inbound JWT validation policy.
+  Replace {tenantId} and {apiClientId} at deployment time via APIM named values
+  or parameter substitution in the Bicep module.
+-->
+<policies>
+  <inbound>
+    <base />
+    <validate-jwt header-name="Authorization"
+                  failed-validation-httpcode="401"
+                  failed-validation-error-message="Unauthorized: invalid or missing JWT"
+                  require-expiration-time="true"
+                  require-scheme="Bearer"
+                  require-signed-tokens="true">
+      <openid-config url="https://login.microsoftonline.com/{{tenantId}}/v2.0/.well-known/openid-configuration" />
+      <audiences>
+        <audience>api://{{apiClientId}}</audience>
+      </audiences>
+      <issuers>
+        <issuer>https://login.microsoftonline.com/{{tenantId}}/v2.0</issuer>
+        <issuer>https://sts.windows.net/{{tenantId}}/</issuer>
+      </issuers>
+      <required-claims>
+        <claim name="roles" match="any">
+          <value>SmartNest.Owner</value>
+          <value>SmartNest.Technician</value>
+          <value>SmartNest.Guest</value>
+        </claim>
+      </required-claims>
+    </validate-jwt>
+    <!-- Propagate correlation-id for distributed tracing -->
+    <set-header name="x-correlation-id" exists-action="skip">
+      <value>@(Guid.NewGuid().ToString())</value>
+    </set-header>
+    <!-- Forward caller identity downstream -->
+    <set-header name="x-ms-client-principal-id" exists-action="override">
+      <value>@(context.Request.Headers.GetValueOrDefault("Authorization","").AsJwt()?.Subject ?? "")</value>
+    </set-header>
+  </inbound>
+  <backend><base /></backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>
