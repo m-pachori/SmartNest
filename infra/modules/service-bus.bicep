@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - Service Bus Module
 //  Standard tier (required for topics).
 //  Topics:  device-events, home-events, user-events

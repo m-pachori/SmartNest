@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - Storage Module
 //  Azure Blob Storage with media-uploads, processed-media, and
 //  snapshots containers.

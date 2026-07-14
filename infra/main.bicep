@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - Main Bicep Orchestration
 //  Deploys all Azure resources for the SmartNest platform.
 //

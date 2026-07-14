@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - Entra ID (Azure AD) App Registrations
 //
 //  NOTE: Azure AD objects (App Registrations, App Roles,

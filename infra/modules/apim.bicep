@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - API Management Module
 //  Developer tier - single gateway for all HTTP Functions.
 //  JWT validation policy applied at the global/API level.
