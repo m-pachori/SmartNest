@@ -1,5 +1,5 @@
-﻿// ============================================================
-//  SmartNest - Azure Monitor Module
+// ============================================================
+//  SmartNest — Azure Monitor Module
 //  Dashboard + Alert rule on App Insights exception rate.
 // ============================================================
 @description('Azure region')
@@ -18,7 +18,7 @@ param alertEmailAddress string
 param tags object = {}
 
 // ------------------------------------------------------------------
-// Action Group - email notification target
+// Action Group — email notification target
 // ------------------------------------------------------------------
 resource alertActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
   name: 'smartnest-alerts-ag'
@@ -38,7 +38,7 @@ resource alertActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
 }
 
 // ------------------------------------------------------------------
-// Alert rule - App Insights exception rate threshold
+// Alert rule — App Insights exception rate threshold
 // Fires when exceptions/5min > 5 (adjust threshold as needed)
 // ------------------------------------------------------------------
 resource exceptionRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
@@ -80,7 +80,7 @@ resource exceptionRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 }
 
 // ------------------------------------------------------------------
-// Alert rule - App Insights ingestion approaching 5 GB/month limit
+// Alert rule — App Insights ingestion approaching 5 GB/month limit
 // Azure Monitor uses daily byte volume on the Log Analytics workspace
 // ------------------------------------------------------------------
 resource ingestionAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
@@ -133,7 +133,7 @@ resource monitorDashboard 'Microsoft.Portal/dashboards@2020-09-01-preview' = {
       {
         order: 0
         parts: [
-          // Widget 1 - Device event throughput
+          // Widget 1 — Device event throughput
           {
             position: { x: 0, y: 0, colSpan: 6, rowSpan: 4 }
             metadata: {
@@ -162,7 +162,7 @@ resource monitorDashboard 'Microsoft.Portal/dashboards@2020-09-01-preview' = {
               ]
             }
           }
-          // Widget 2 - Exception rate
+          // Widget 2 — Exception rate
           {
             position: { x: 6, y: 0, colSpan: 6, rowSpan: 4 }
             metadata: {
@@ -191,7 +191,7 @@ resource monitorDashboard 'Microsoft.Portal/dashboards@2020-09-01-preview' = {
               ]
             }
           }
-          // Widget 3 - Summary job status (custom metric)
+          // Widget 3 — Summary job status (custom metric)
           {
             position: { x: 0, y: 4, colSpan: 6, rowSpan: 4 }
             metadata: {
@@ -220,7 +220,7 @@ resource monitorDashboard 'Microsoft.Portal/dashboards@2020-09-01-preview' = {
               ]
             }
           }
-          // Widget 4 - Media processing lag (alerts dispatched)
+          // Widget 4 — Media processing lag (alerts dispatched)
           {
             position: { x: 6, y: 4, colSpan: 6, rowSpan: 4 }
             metadata: {

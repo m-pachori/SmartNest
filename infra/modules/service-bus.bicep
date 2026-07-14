@@ -1,5 +1,5 @@
-﻿// ============================================================
-//  SmartNest - Service Bus Module
+// ============================================================
+//  SmartNest — Service Bus Module
 //  Standard tier (required for topics).
 //  Topics:  device-events, home-events, user-events
 //  Queue:   media-processing (replaced by blob trigger per plan,
@@ -8,7 +8,7 @@
 //  Fix H3: all API versions changed from 2022-10-01-preview to
 //           stable GA 2021-11-01.
 //  Fix C1: all connection string outputs are @secure() and are
-//           NOT returned as plain strings - caller (main.bicep)
+//           NOT returned as plain strings — caller (main.bicep)
 //           passes them directly to the Key Vault module.
 //  Fix L2: subscriptions now reference their parent topic via
 //           a named resource variable, not a fragile array index.
@@ -23,7 +23,7 @@ param namespaceName string
 param tags object = {}
 
 // ------------------------------------------------------------------
-// Service Bus Namespace - Standard tier (topics require Standard+)
+// Service Bus Namespace — Standard tier (topics require Standard+)
 // Fix H3: stable GA API version 2021-11-01
 // ------------------------------------------------------------------
 resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2021-11-01' = {
@@ -42,7 +42,7 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2021-11-01' = {
 }
 
 // ------------------------------------------------------------------
-// Topics - declared as named resources (Fix L2: no array index coupling)
+// Topics — declared as named resources (Fix L2: no array index coupling)
 // ------------------------------------------------------------------
 resource deviceEventsTopic 'Microsoft.ServiceBus/namespaces/topics@2021-11-01' = {
   parent: serviceBusNamespace
@@ -88,7 +88,7 @@ resource userEventsTopic 'Microsoft.ServiceBus/namespaces/topics@2021-11-01' = {
 }
 
 // ------------------------------------------------------------------
-// Subscriptions - each references its named parent topic (Fix L2)
+// Subscriptions — each references its named parent topic (Fix L2)
 // ------------------------------------------------------------------
 
 // --- device-events subscriptions ---
@@ -208,21 +208,21 @@ resource functionsRootRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2
 
 // ------------------------------------------------------------------
 // Outputs
-// Fix C1: all connection strings are @secure() - passed to Key Vault
+// Fix C1: all connection strings are @secure() — passed to Key Vault
 //          by main.bicep, never stored as plain deployment outputs.
 // ------------------------------------------------------------------
 output serviceBusNamespaceId string = serviceBusNamespace.id
 output serviceBusNamespaceName string = serviceBusNamespace.name
 output serviceBusEndpoint string = serviceBusNamespace.properties.serviceBusEndpoint
 
-@description('Functions root connection string - passed directly to Key Vault. Never log.')
+@description('Functions root connection string — passed directly to Key Vault. Never log.')
 @secure()
 output functionsConnectionString string = functionsRootRule.listKeys().primaryConnectionString
 
-@description('DeviceService send-only connection string - passed directly to Key Vault. Never log.')
+@description('DeviceService send-only connection string — passed directly to Key Vault. Never log.')
 @secure()
 output deviceServiceSendConnectionString string = deviceServiceSendRule.listKeys().primaryConnectionString
 
-@description('AuditService listen-only connection string - passed directly to Key Vault. Never log.')
+@description('AuditService listen-only connection string — passed directly to Key Vault. Never log.')
 @secure()
 output auditServiceListenConnectionString string = auditServiceListenRule.listKeys().primaryConnectionString

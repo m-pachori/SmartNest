@@ -1,5 +1,5 @@
-﻿// ============================================================
-//  SmartNest - Cosmos DB Module
+// ============================================================
+//  SmartNest — Cosmos DB Module
 //  Serverless capacity mode, one database, one container per
 //  bounded context.
 //
@@ -7,7 +7,7 @@
 //  Fix M3: enableFreeTier is now a param (default false);
 //           pass true only in dev.parameters.json.
 //  Fix C1: cosmosPrimaryKey is @secure() and NOT output as
-//           plain text - caller (main.bicep) passes it to the
+//           plain text — caller (main.bicep) passes it to the
 //           Key Vault module.
 // ============================================================
 @description('Azure region for the Cosmos DB account')
@@ -26,7 +26,7 @@ param enableFreeTier bool = false
 param tags object = {}
 
 // ------------------------------------------------------------------
-// Cosmos DB Account - Serverless capacity mode
+// Cosmos DB Account — Serverless capacity mode
 // Fix H3: stable GA API version 2023-11-15 (already stable; kept)
 // ------------------------------------------------------------------
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' = {
@@ -46,11 +46,11 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' = {
         isZoneRedundant: false
       }
     ]
-    // Serverless - no idle RU/s charge; billed per actual RU consumed
+    // Serverless — no idle RU/s charge; billed per actual RU consumed
     capabilities: [
       { name: 'EnableServerless' }
     ]
-    // M3: enableFreeTier is now parameterised - only dev should set this true.
+    // M3: enableFreeTier is now parameterised — only dev should set this true.
     // Free tier is silently ignored if another Cosmos account already claims it
     // in the same subscription (staging/prod default to false).
     enableFreeTier: enableFreeTier
@@ -83,7 +83,7 @@ resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2023
 }
 
 // ------------------------------------------------------------------
-// Containers - one per bounded context
+// Containers — one per bounded context
 // Partition key strategy follows the dominant query pattern for each
 // aggregate:
 //   homes          → /homeId      (all home queries filter by homeId)
@@ -133,7 +133,7 @@ resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/co
 
 // ------------------------------------------------------------------
 // Outputs
-// Fix C1: cosmosPrimaryKey is marked @secure() - the value is passed
+// Fix C1: cosmosPrimaryKey is marked @secure() — the value is passed
 //          to the Key Vault module by main.bicep and is NOT stored in
 //          deployment history as a plain string.
 // ------------------------------------------------------------------
@@ -142,6 +142,6 @@ output cosmosAccountName string = cosmosAccount.name
 output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
 output cosmosDatabaseName string = cosmosDatabase.name
 
-@description('Primary key - passed directly to the Key Vault module. Never log or store elsewhere.')
+@description('Primary key — passed directly to the Key Vault module. Never log or store elsewhere.')
 @secure()
 output cosmosPrimaryKey string = cosmosAccount.listKeys().primaryMasterKey

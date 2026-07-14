@@ -1,10 +1,10 @@
-﻿// ============================================================
-//  SmartNest - Storage Module
+// ============================================================
+//  SmartNest — Storage Module
 //  Azure Blob Storage with media-uploads, processed-media, and
 //  snapshots containers.
 //
 //  Fix C1: storageConnectionString is @secure() and is NOT
-//           returned as a plain output - caller (main.bicep)
+//           returned as a plain output — caller (main.bicep)
 //           passes it directly to the Key Vault module.
 // ============================================================
 @description('Azure region')
@@ -17,7 +17,7 @@ param storageAccountName string
 param tags object = {}
 
 // ------------------------------------------------------------------
-// Storage Account - LRS, Standard (Free Tier: 5 GB LRS)
+// Storage Account — LRS, Standard (Free Tier: 5 GB LRS)
 // ------------------------------------------------------------------
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
@@ -56,7 +56,7 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01'
   properties: {
     deleteRetentionPolicy: {
       enabled: true
-      days: 7          // soft-delete for 7 days - safety net during POC
+      days: 7          // soft-delete for 7 days — safety net during POC
     }
     containerDeleteRetentionPolicy: {
       enabled: true
@@ -87,7 +87,7 @@ resource processedMediaContainer 'Microsoft.Storage/storageAccounts/blobServices
   }
 }
 
-// Snapshots container - used by Event Sourcing / Audit Service
+// Snapshots container — used by Event Sourcing / Audit Service
 resource snapshotsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
   parent: blobService
   name: 'snapshots'
@@ -98,13 +98,13 @@ resource snapshotsContainer 'Microsoft.Storage/storageAccounts/blobServices/cont
 
 // ------------------------------------------------------------------
 // Outputs
-// Fix C1: storageConnectionString is @secure() - passed to the Key
+// Fix C1: storageConnectionString is @secure() — passed to the Key
 //          Vault module by main.bicep, never stored in plain text.
 // ------------------------------------------------------------------
 output storageAccountId string = storageAccount.id
 output storageAccountName string = storageAccount.name
 output primaryBlobEndpoint string = storageAccount.properties.primaryEndpoints.blob
 
-@description('Connection string - passed directly to Key Vault module. Never log or store elsewhere.')
+@description('Connection string — passed directly to Key Vault module. Never log or store elsewhere.')
 @secure()
 output storageConnectionString string = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net'

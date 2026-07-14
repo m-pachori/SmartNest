@@ -1,6 +1,6 @@
-﻿// ============================================================
-//  SmartNest - API Management Module
-//  Developer tier - single gateway for all HTTP Functions.
+// ============================================================
+//  SmartNest — API Management Module
+//  Developer tier — single gateway for all HTTP Functions.
 //  JWT validation policy applied at the global/API level.
 //
 //  Fix H3: all API versions changed from 2023-05-01-preview to
@@ -21,16 +21,16 @@ param publisherEmail string
 @description('Publisher display name')
 param publisherName string
 
-@description('Azure AD Tenant ID - used in JWT validation policy')
+@description('Azure AD Tenant ID — used in JWT validation policy')
 param tenantId string
 
 @description('Azure AD App Registration Client ID (smartnest-api)')
 param apiClientId string
 
-@description('Application Insights ARM resource ID - used to link the APIM logger to the correct AI resource')
+@description('Application Insights ARM resource ID — used to link the APIM logger to the correct AI resource')
 param appInsightsResourceId string
 
-@description('Application Insights connection string - used as the logger credential')
+@description('Application Insights connection string — used as the logger credential')
 param appInsightsConnectionString string
 
 @description('Application Insights instrumentation key')
@@ -40,7 +40,7 @@ param appInsightsInstrumentationKey string
 param tags object = {}
 
 // ------------------------------------------------------------------
-// API Management Service - Developer tier (no SLA, suitable for POC)
+// API Management Service — Developer tier (no SLA, suitable for POC)
 // Fix H3: stable GA API version 2022-08-01
 // ------------------------------------------------------------------
 resource apimService 'Microsoft.ApiManagement/service@2022-08-01' = {
@@ -68,7 +68,7 @@ resource apimService 'Microsoft.ApiManagement/service@2022-08-01' = {
 }
 
 // ------------------------------------------------------------------
-// Named values - injected into the JWT policy XML at runtime
+// Named values — injected into the JWT policy XML at runtime
 // ------------------------------------------------------------------
 resource namedValueTenantId 'Microsoft.ApiManagement/service/namedValues@2022-08-01' = {
   parent: apimService
@@ -114,7 +114,7 @@ resource apimLogger 'Microsoft.ApiManagement/service/loggers@2022-08-01' = {
 }
 
 // ------------------------------------------------------------------
-// Diagnostic settings - link APIM to App Insights
+// Diagnostic settings — link APIM to App Insights
 // ------------------------------------------------------------------
 resource apimDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2022-08-01' = {
   parent: apimService
@@ -141,7 +141,7 @@ resource apimDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2022-08-01
 }
 
 // ------------------------------------------------------------------
-// Global inbound policy - JWT validation applied to every API
+// Global inbound policy — JWT validation applied to every API
 // ------------------------------------------------------------------
 resource apimGlobalPolicy 'Microsoft.ApiManagement/service/policies@2022-08-01' = {
   parent: apimService
@@ -191,7 +191,7 @@ resource apimGlobalPolicy 'Microsoft.ApiManagement/service/policies@2022-08-01' 
 }
 
 // ------------------------------------------------------------------
-// Products - group APIs logically
+// Products — group APIs logically
 // ------------------------------------------------------------------
 resource smartNestProduct 'Microsoft.ApiManagement/service/products@2022-08-01' = {
   parent: apimService

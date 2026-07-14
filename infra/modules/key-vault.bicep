@@ -1,5 +1,5 @@
-﻿// ============================================================
-//  SmartNest - Key Vault Module
+// ============================================================
+//  SmartNest — Key Vault Module
 //  Stores all deployment secrets so they are never exposed as
 //  plain-text Bicep outputs or in deployment history.
 //
@@ -22,28 +22,28 @@ param location string
 @description('Key Vault name (3–24 alphanumeric and hyphens, globally unique)')
 param keyVaultName string
 
-@description('Object ID of the APIM system-assigned managed identity - granted Get/List')
+@description('Object ID of the APIM system-assigned managed identity — granted Get/List')
 param apimPrincipalId string
 
 @description('Resource tags')
 param tags object = {}
 
 // ------------------------------------------------------------------
-// Cosmos DB primary key - passed in from cosmos-db module
+// Cosmos DB primary key — passed in from cosmos-db module
 // ------------------------------------------------------------------
 @description('Cosmos DB primary master key')
 @secure()
 param cosmosPrimaryKey string
 
 // ------------------------------------------------------------------
-// Storage connection string - passed in from storage module
+// Storage connection string — passed in from storage module
 // ------------------------------------------------------------------
 @description('Storage account connection string')
 @secure()
 param storageConnectionString string
 
 // ------------------------------------------------------------------
-// Service Bus connection strings - passed in from service-bus module
+// Service Bus connection strings — passed in from service-bus module
 // ------------------------------------------------------------------
 @description('Service Bus Functions root connection string')
 @secure()
@@ -58,7 +58,7 @@ param serviceBusDeviceSvcSendConnectionString string
 param serviceBusAuditSvcListenConnectionString string
 
 // ------------------------------------------------------------------
-// Key Vault - Standard tier, soft-delete enabled, purge protection on
+// Key Vault — Standard tier, soft-delete enabled, purge protection on
 // ------------------------------------------------------------------
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
@@ -147,7 +147,7 @@ resource secretSbAuditSvc 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
 }
 
 // ------------------------------------------------------------------
-// Outputs - URIs only, never secret values
+// Outputs — URIs only, never secret values
 // ------------------------------------------------------------------
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name
