@@ -1,0 +1,27 @@
+# Normalise all text files to LF on checkin, checkout as-is on Windows
+* text=auto
+
+# Bicep - always LF, never BOM - Bicep compiler on Linux rejects BOM and CRLF
+*.bicep text eol=lf
+
+# Shell scripts - always LF
+*.sh text eol=lf
+
+# PowerShell - keep CRLF on Windows
+*.ps1 text eol=crlf
+
+# JSON/YAML - LF
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# XML
+*.xml text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Binary files - no line ending conversion
+*.png binary
+*.jpg binary
+*.ico binary

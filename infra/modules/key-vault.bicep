@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - Key Vault Module
 //  Stores all deployment secrets so they are never exposed as
 //  plain-text Bicep outputs or in deployment history.

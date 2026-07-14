@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - Cosmos DB Module
 //  Serverless capacity mode, one database, one container per
 //  bounded context.

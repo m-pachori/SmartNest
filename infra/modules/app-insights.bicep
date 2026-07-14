@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  SmartNest - Application Insights Module
 //  Log Analytics Workspace + Application Insights workspace.
 //  All Function Apps share one Application Insights instance.
