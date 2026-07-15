@@ -11,6 +11,9 @@ param appInsightsId string
 @description('Application Insights name (used for metric queries)')
 param appInsightsName string
 
+@description('Log Analytics workspace resource ID - used for the log ingestion volume alert (Usage table)')
+param logAnalyticsWorkspaceId string
+
 @description('Email address for alert notifications')
 param alertEmailAddress string
 
@@ -83,41 +86,45 @@ resource exceptionRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 // Alert rule - App Insights ingestion approaching 5 GB/month limit
 // Azure Monitor uses daily byte volume on the Log Analytics workspace
 // ------------------------------------------------------------------
-resource ingestionAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+// ------------------------------------------------------------------
+// Alert rule - App Insights ingestion approaching 5 GB/month limit
+// Implemented as a log query alert (scheduledQueryRules) against the
+// Log Analytics workspace's `Usage` table - there is no metric named
+// 'billedsize' on microsoft.insights/components, so a metric alert
+// cannot express this; the Usage table is the supported source for
+// ingested-data-volume alerting.
+// ------------------------------------------------------------------
+resource ingestionAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
   name: 'smartnest-log-ingestion-warning'
-  location: 'global'
+  location: location
   tags: tags
   properties: {
+    displayName: 'SmartNest - Daily Log Ingestion Warning'
     description: 'Fires when daily log ingestion exceeds 150 MB (approaching free tier 5 GB/month limit)'
     severity: 3       // Informational
     enabled: true
-    scopes: [ appInsightsId ]
+    scopes: [ logAnalyticsWorkspaceId ]
     evaluationFrequency: 'PT1H'
     windowSize: 'P1D'
     criteria: {
-      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
       allOf: [
         {
-          name: 'DailyIngestionCriteria'
-          criterionType: 'StaticThresholdCriterion'
-          metricNamespace: 'microsoft.insights/components'
-          metricName: 'microsoft.insights/components/billedsize'
-          operator: 'GreaterThan'
-          threshold: 157286400    // 150 MB in bytes
+          query: 'Usage | where IsBillable == true | summarize IngestedMB = sum(Quantity) by bin(TimeGenerated, 1d)'
           timeAggregation: 'Maximum'
-          skipMetricValidation: false
+          metricMeasureColumn: 'IngestedMB'
+          operator: 'GreaterThan'
+          threshold: 150
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
         }
       ]
     }
-    actions: [
-      {
-        actionGroupId: alertActionGroup.id
-        webHookProperties: {}
-      }
-    ]
+    actions: {
+      actionGroups: [ alertActionGroup.id ]
+    }
     autoMitigate: true
-    targetResourceType: 'microsoft.insights/components'
-    targetResourceRegion: location
   }
 }
 

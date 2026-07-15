@@ -33,9 +33,6 @@ param appInsightsResourceId string
 @description('Application Insights connection string - used as the logger credential')
 param appInsightsConnectionString string
 
-@description('Application Insights instrumentation key')
-param appInsightsInstrumentationKey string
-
 @description('Resource tags')
 param tags object = {}
 
@@ -107,7 +104,9 @@ resource apimLogger 'Microsoft.ApiManagement/service/loggers@2022-08-01' = {
     resourceId: appInsightsResourceId        // Fix M1: ARM resource ID
     credentials: {
       connectionString: appInsightsConnectionString  // Fix M1: connection string here
-      instrumentationKey: appInsightsInstrumentationKey
+      // Fix: 'instrumentationKey' is not a valid credentials field alongside
+      // 'connectionString' - the API rejects the logger when both are present
+      // ('Either connectionString or instrumentationKey have to be specified').
     }
     isBuffered: true
   }
@@ -151,7 +150,6 @@ resource apimGlobalPolicy 'Microsoft.ApiManagement/service/policies@2022-08-01' 
     value: '''
 <policies>
   <inbound>
-    <base />
     <validate-jwt header-name="Authorization"
                   failed-validation-httpcode="401"
                   failed-validation-error-message="Unauthorized: invalid or missing JWT"
@@ -181,9 +179,9 @@ resource apimGlobalPolicy 'Microsoft.ApiManagement/service/policies@2022-08-01' 
       <value>@(context.Request.Headers.GetValueOrDefault("Authorization","").AsJwt()?.Subject ?? "")</value>
     </set-header>
   </inbound>
-  <backend><base /></backend>
-  <outbound><base /></outbound>
-  <on-error><base /></on-error>
+  <backend></backend>
+  <outbound></outbound>
+  <on-error></on-error>
 </policies>
 '''
   }
@@ -200,8 +198,10 @@ resource smartNestProduct 'Microsoft.ApiManagement/service/products@2022-08-01' 
     displayName: 'SmartNest Backend APIs'
     description: 'All SmartNest microservice HTTP endpoints'
     state: 'published'
-    subscriptionRequired: false   // JWT is the auth mechanism, not APIM subscription keys
-    approvalRequired: false
+    // Fix: 'approvalRequired' is only valid when subscriptionRequired is true -
+    // the API rejects the product otherwise. JWT is the auth mechanism here,
+    // not APIM subscription keys, so subscriptions are disabled entirely.
+    subscriptionRequired: false
   }
 }
 

@@ -162,7 +162,6 @@ module apimModule 'modules/apim.bicep' = {
     apiClientId: apiAppClientId
     appInsightsResourceId: appInsightsModule.outputs.appInsightsId      // Fix M1
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
-    appInsightsInstrumentationKey: appInsightsModule.outputs.instrumentationKey
     tags: commonTags
   }
   dependsOn: [ appInsightsModule ]
@@ -177,6 +176,7 @@ module monitorModule 'modules/monitor.bicep' = {
     location: location
     appInsightsId: appInsightsModule.outputs.appInsightsId
     appInsightsName: appInsightsModule.outputs.appInsightsName
+    logAnalyticsWorkspaceId: appInsightsModule.outputs.logAnalyticsWorkspaceId
     alertEmailAddress: monitorAlertEmailAddress
     tags: commonTags
   }
