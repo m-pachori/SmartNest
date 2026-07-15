@@ -54,7 +54,13 @@ resource api 'Microsoft.ApiManagement/service/apis@2022-08-01' = {
   name: apiName
   properties: {
     displayName: apiDisplayName
-    path: apiName
+    // Fix: path must be empty, not apiName. Each operation's urlTemplate
+    // already contains the full desired public path (e.g. "/homes",
+    // "/homes/{id}") — if the API also had a "path" prefix equal to
+    // apiName ("homes"), the public gateway URL would be double-prefixed
+    // (e.g. /homes/homes) while the backend serviceUrl+urlTemplate
+    // combination (which doesn't involve "path") stays correct either way.
+    path: ''
     protocols: [
       'https'
     ]
