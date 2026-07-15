@@ -54,7 +54,7 @@ internal sealed class CosmosIdentityRepository : CosmosRepositoryBase<HomeMember
         // Partition-scoped query (not cross-partition) - homeId is already known here.
         // Only matches Active memberships: a re-invite after deactivation should create a
         // fresh membership record rather than colliding with the old (retained) one.
-        var query = new QueryDefinition("SELECT * FROM c WHERE c.UserId = @userId AND c.Status = 'Active'")
+        var query = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId AND c.status = 'Active'")
             .WithParameter("@userId", userId);
         var requestOptions = new QueryRequestOptions { PartitionKey = new PartitionKey(homeId) };
         using var iterator = Container.GetItemQueryIterator<HomeMembershipDocument>(query, requestOptions: requestOptions);
