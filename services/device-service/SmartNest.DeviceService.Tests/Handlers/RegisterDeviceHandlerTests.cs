@@ -13,11 +13,10 @@ namespace SmartNest.DeviceService.Tests.Handlers;
 
 public class RegisterDeviceHandlerTests
 {
-    private static CurrentUser MakeUser(string? homeId, params string[] roles) => new()
+    private static CurrentUser MakeUser(string userId, params string[] roles) => new()
     {
-        UserId = "user-1",
+        UserId = userId,
         Roles = roles,
-        HomeId = homeId,
     };
 
     private static RegisterDeviceRequest MakeRequest() => new(
@@ -27,12 +26,14 @@ public class RegisterDeviceHandlerTests
         Model: "T-100");
 
     [Fact]
-    public async Task HandleAsync_RegistersDeviceAndPublishesEvent_WhenCallerIsOwnerWithMatchingHomeId()
+    public async Task HandleAsync_RegistersDeviceAndPublishesEvent_WhenCallerOwnsTheHome()
     {
         var repository = new Mock<IDeviceRepository>();
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
+        homeOwnership.Setup(h => h.GetOwnerIdAsync("home-1", It.IsAny<CancellationToken>())).ReturnsAsync("user-1");
         var eventPublisher = new Mock<IEventPublisher>();
-        var handler = new RegisterDeviceHandler(repository.Object, new DeviceEventPublisher(eventPublisher.Object));
-        var user = MakeUser("home-1", "SmartNest.Owner");
+        var handler = new RegisterDeviceHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Owner");
 
         var result = await handler.HandleAsync(user, "home-1", MakeRequest());
 
@@ -51,9 +52,27 @@ public class RegisterDeviceHandlerTests
     public async Task HandleAsync_Throws_WhenCallerIsGuest()
     {
         var repository = new Mock<IDeviceRepository>();
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
         var eventPublisher = new Mock<IEventPublisher>();
-        var handler = new RegisterDeviceHandler(repository.Object, new DeviceEventPublisher(eventPublisher.Object));
-        var user = MakeUser("home-1", "SmartNest.Guest");
+        var handler = new RegisterDeviceHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Guest");
+
+        var act = () => handler.HandleAsync(user, "home-1", MakeRequest());
+
+        await act.Should().ThrowAsync<ForbiddenException>();
+        repository.Verify(r => r.CreateAsync(It.IsAny<Device>(), It.IsAny<CancellationToken>()), Times.Never);
+        homeOwnership.Verify(h => h.GetOwnerIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleAsync_Throws_WhenCallerDoesNotOwnTheHome()
+    {
+        var repository = new Mock<IDeviceRepository>();
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
+        homeOwnership.Setup(h => h.GetOwnerIdAsync("home-1", It.IsAny<CancellationToken>())).ReturnsAsync("someone-else");
+        var eventPublisher = new Mock<IEventPublisher>();
+        var handler = new RegisterDeviceHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Owner");
 
         var act = () => handler.HandleAsync(user, "home-1", MakeRequest());
 
@@ -62,16 +81,18 @@ public class RegisterDeviceHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_Throws_WhenHomeIdClaimDoesNotMatchTargetHome()
+    public async Task HandleAsync_Throws_WhenHomeDoesNotExist()
     {
         var repository = new Mock<IDeviceRepository>();
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
+        homeOwnership.Setup(h => h.GetOwnerIdAsync("home-1", It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
         var eventPublisher = new Mock<IEventPublisher>();
-        var handler = new RegisterDeviceHandler(repository.Object, new DeviceEventPublisher(eventPublisher.Object));
-        var user = MakeUser("home-2", "SmartNest.Owner");
+        var handler = new RegisterDeviceHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Owner");
 
         var act = () => handler.HandleAsync(user, "home-1", MakeRequest());
 
-        await act.Should().ThrowAsync<ForbiddenException>();
+        await act.Should().ThrowAsync<KeyNotFoundException>();
         repository.Verify(r => r.CreateAsync(It.IsAny<Device>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

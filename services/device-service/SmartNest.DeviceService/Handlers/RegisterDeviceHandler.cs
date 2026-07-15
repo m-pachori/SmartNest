@@ -9,17 +9,23 @@ namespace SmartNest.DeviceService.Handlers;
 
 /// <summary>
 /// Handles <c>POST /homes/{homeId}/devices</c>. Owner/Technician may register a device
-/// (treated as "mutate" per smartnest-plan.md Task 3); caller's <c>homeId</c> claim must
-/// match the target home.
+/// (treated as "mutate" per smartnest-plan.md Task 3); caller must own the target home
+/// (verified against the Cosmos-level <c>homes</c> document's OwnerId, not the JWT's
+/// self-asserted <c>homeId</c> claim - mirrors Home Service's ownership pattern).
 /// </summary>
 public sealed class RegisterDeviceHandler
 {
     private readonly IDeviceRepository _repository;
+    private readonly IHomeOwnershipRepository _homeOwnershipRepository;
     private readonly DeviceEventPublisher _eventPublisher;
 
-    public RegisterDeviceHandler(IDeviceRepository repository, DeviceEventPublisher eventPublisher)
+    public RegisterDeviceHandler(
+        IDeviceRepository repository,
+        IHomeOwnershipRepository homeOwnershipRepository,
+        DeviceEventPublisher eventPublisher)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _homeOwnershipRepository = homeOwnershipRepository ?? throw new ArgumentNullException(nameof(homeOwnershipRepository));
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
     }
 
@@ -35,7 +41,10 @@ public sealed class RegisterDeviceHandler
             throw new ArgumentException("HomeId is required.", nameof(homeId));
 
         AuthorizationGuard.RequireRole(user, "SmartNest.Owner", "SmartNest.Technician");
-        AuthorizationGuard.RequireHomeIdMatch(user, homeId);
+
+        var ownerId = await _homeOwnershipRepository.GetOwnerIdAsync(homeId, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Home '{homeId}' was not found.");
+        AuthorizationGuard.RequireOwnership(user, ownerId);
 
         var metadata = new DeviceMetadata(request.Name, request.DeviceType, request.Manufacturer, request.Model);
         var device = Device.Register(homeId, metadata);

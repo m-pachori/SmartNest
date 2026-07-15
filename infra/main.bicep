@@ -237,6 +237,7 @@ module homeFunctionAppModule 'modules/function-app.bicep' = {
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
     additionalAppSettings: {
       'Cosmos:HomesContainerName': 'homes'
+      'Cosmos:DevicesContainerName': 'devices'
     }
     tags: commonTags
   }
@@ -348,7 +349,7 @@ module deviceFunctionAppModule 'modules/function-app.bicep' = {
     serviceName: 'device'
     functionAppName: deviceServiceFunctionAppName
     hostingPlanName: deviceServiceHostingPlanName
-    storageConnectionStringSecretUri: keyVaultModule.outputs.storageConnectionStringSecretUri
+    storageConnectionString: storageModule.outputs.storageConnectionString
     cosmosEndpoint: cosmosModule.outputs.cosmosEndpoint
     cosmosDatabaseName: cosmosDatabaseName
     cosmosPrimaryKeySecretUri: keyVaultModule.outputs.cosmosPrimaryKeySecretUri
@@ -356,6 +357,10 @@ module deviceFunctionAppModule 'modules/function-app.bicep' = {
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
     additionalAppSettings: {
       'Cosmos:DevicesContainerName': 'devices'
+      // Read-only lookup used for the ownership check (Cosmos-level home
+      // ownership verification, mirroring Home Service - see
+      // IHomeOwnershipRepository) instead of trusting the JWT homeId claim.
+      'Cosmos:HomesContainerName': 'homes'
     }
     tags: commonTags
   }
@@ -379,8 +384,9 @@ resource deviceFunctionAppKvRoleAssignment 'Microsoft.Authorization/roleAssignme
 // ------------------------------------------------------------------
 // Store the Device Service Function App's default host key in Key
 // Vault so APIM can reference it as a named value (see apim-api.bicep).
+// Only needed when APIM is deployed (tech debt - disabled by default).
 // ------------------------------------------------------------------
-resource deviceSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource deviceSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployApim) {
   parent: existingKeyVaultForRoleAssignment
   name: 'device-svc-function-key'
   properties: {
@@ -391,8 +397,9 @@ resource deviceSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-0
 // ------------------------------------------------------------------
 // Module: Register the Device Service API in APIM (route prefix /devices,
 // plus POST /homes/{homeId}/devices for registration)
+// Disabled by default (tech debt) - see deployApim param above.
 // ------------------------------------------------------------------
-module deviceApiModule 'modules/apim-api.bicep' = {
+module deviceApiModule 'modules/apim-api.bicep' = if (deployApim) {
   name: 'deploy-device-api'
   params: {
     apimServiceName: apimModule.outputs.apimServiceName

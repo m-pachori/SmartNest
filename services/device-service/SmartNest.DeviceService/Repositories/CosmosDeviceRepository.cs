@@ -28,6 +28,18 @@ internal sealed class CosmosDeviceRepository : CosmosRepositoryBase<DeviceDocume
         if (iterator.HasMoreResults)
         {
             var response = await iterator.ReadNextAsync(cancellationToken).ConfigureAwait(false);
+
+            // DeviceId is a generated GUID (see Device.Register), so more than one match
+            // for the same id should never happen. Guard against it explicitly rather than
+            // silently returning an arbitrary match, which could otherwise leak a device
+            // from a different home if a duplicate id was ever introduced (e.g. bad data
+            // import/migration).
+            if (response.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"Data integrity error: found {response.Count} devices with id '{deviceId}' across different homes.");
+            }
+
             var document = response.FirstOrDefault();
             if (document is not null)
                 return document.ToDomain();

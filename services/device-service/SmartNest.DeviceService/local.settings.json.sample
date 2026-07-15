@@ -8,6 +8,7 @@
         "Cosmos:Key": "<cosmos-db-emulator-or-dev-account-primary-key>",
         "Cosmos:DatabaseName": "smartnest-db",
         "Cosmos:DevicesContainerName": "devices",
+        "Cosmos:HomesContainerName": "homes",
         "ServiceBus:ConnectionString": "<service-bus-connection-string>"
     }
 }

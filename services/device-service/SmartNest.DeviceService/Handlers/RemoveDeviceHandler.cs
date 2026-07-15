@@ -5,17 +5,23 @@ using SmartNest.Shared.Security;
 namespace SmartNest.DeviceService.Handlers;
 
 /// <summary>
-/// Handles <c>DELETE /devices/{id}</c>. Owner/Technician may remove; caller's
-/// <c>homeId</c> claim must match the device's home.
+/// Handles <c>DELETE /devices/{id}</c>. Owner/Technician may remove; caller must own the
+/// device's home (verified against the Cosmos-level <c>homes</c> document's OwnerId, not
+/// the JWT's self-asserted <c>homeId</c> claim - mirrors Home Service's ownership pattern).
 /// </summary>
 public sealed class RemoveDeviceHandler
 {
     private readonly IDeviceRepository _repository;
+    private readonly IHomeOwnershipRepository _homeOwnershipRepository;
     private readonly DeviceEventPublisher _eventPublisher;
 
-    public RemoveDeviceHandler(IDeviceRepository repository, DeviceEventPublisher eventPublisher)
+    public RemoveDeviceHandler(
+        IDeviceRepository repository,
+        IHomeOwnershipRepository homeOwnershipRepository,
+        DeviceEventPublisher eventPublisher)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _homeOwnershipRepository = homeOwnershipRepository ?? throw new ArgumentNullException(nameof(homeOwnershipRepository));
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
     }
 
@@ -30,7 +36,9 @@ public sealed class RemoveDeviceHandler
         var device = await _repository.GetAsync(deviceId, cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Device '{deviceId}' was not found.");
 
-        AuthorizationGuard.RequireHomeIdMatch(user, device.HomeId);
+        var ownerId = await _homeOwnershipRepository.GetOwnerIdAsync(device.HomeId, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Home '{device.HomeId}' was not found.");
+        AuthorizationGuard.RequireOwnership(user, ownerId);
 
         device.MarkRemoved();
 

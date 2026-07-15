@@ -14,11 +14,10 @@ namespace SmartNest.DeviceService.Tests.Handlers;
 
 public class UpdateDeviceStateHandlerTests
 {
-    private static CurrentUser MakeUser(string? homeId, params string[] roles) => new()
+    private static CurrentUser MakeUser(string userId, params string[] roles) => new()
     {
-        UserId = "user-1",
+        UserId = userId,
         Roles = roles,
-        HomeId = homeId,
     };
 
     private static Device MakeDevice(string homeId = "home-1") =>
@@ -28,14 +27,16 @@ public class UpdateDeviceStateHandlerTests
         new("temperature", new StateValueRequest(StateValueType.Numeric, null, 22.5, null, "celsius"));
 
     [Fact]
-    public async Task HandleAsync_UpdatesStateAndPublishesEvent_WhenCallerIsTechnicianWithMatchingHomeId()
+    public async Task HandleAsync_UpdatesStateAndPublishesEvent_WhenCallerIsTechnicianAndOwnsTheHome()
     {
         var device = MakeDevice();
         var repository = new Mock<IDeviceRepository>();
         repository.Setup(r => r.GetAsync(device.DeviceId, It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
+        homeOwnership.Setup(h => h.GetOwnerIdAsync("home-1", It.IsAny<CancellationToken>())).ReturnsAsync("user-1");
         var eventPublisher = new Mock<IEventPublisher>();
-        var handler = new UpdateDeviceStateHandler(repository.Object, new DeviceEventPublisher(eventPublisher.Object));
-        var user = MakeUser("home-1", "SmartNest.Technician");
+        var handler = new UpdateDeviceStateHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Technician");
 
         var result = await handler.HandleAsync(user, device.DeviceId, MakeRequest());
 
@@ -54,9 +55,10 @@ public class UpdateDeviceStateHandlerTests
     public async Task HandleAsync_Throws_WhenCallerIsGuest()
     {
         var repository = new Mock<IDeviceRepository>();
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
         var eventPublisher = new Mock<IEventPublisher>();
-        var handler = new UpdateDeviceStateHandler(repository.Object, new DeviceEventPublisher(eventPublisher.Object));
-        var user = MakeUser("home-1", "SmartNest.Guest");
+        var handler = new UpdateDeviceStateHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Guest");
 
         var act = () => handler.HandleAsync(user, "device-1", MakeRequest());
 
@@ -69,9 +71,10 @@ public class UpdateDeviceStateHandlerTests
     {
         var repository = new Mock<IDeviceRepository>();
         repository.Setup(r => r.GetAsync("missing", It.IsAny<CancellationToken>())).ReturnsAsync((Device?)null);
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
         var eventPublisher = new Mock<IEventPublisher>();
-        var handler = new UpdateDeviceStateHandler(repository.Object, new DeviceEventPublisher(eventPublisher.Object));
-        var user = MakeUser("home-1", "SmartNest.Owner");
+        var handler = new UpdateDeviceStateHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Owner");
 
         var act = () => handler.HandleAsync(user, "missing", MakeRequest());
 
@@ -79,14 +82,16 @@ public class UpdateDeviceStateHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_Throws_WhenHomeIdClaimDoesNotMatch()
+    public async Task HandleAsync_Throws_WhenCallerDoesNotOwnTheHome()
     {
         var device = MakeDevice(homeId: "home-1");
         var repository = new Mock<IDeviceRepository>();
         repository.Setup(r => r.GetAsync(device.DeviceId, It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        var homeOwnership = new Mock<IHomeOwnershipRepository>();
+        homeOwnership.Setup(h => h.GetOwnerIdAsync("home-1", It.IsAny<CancellationToken>())).ReturnsAsync("someone-else");
         var eventPublisher = new Mock<IEventPublisher>();
-        var handler = new UpdateDeviceStateHandler(repository.Object, new DeviceEventPublisher(eventPublisher.Object));
-        var user = MakeUser("home-2", "SmartNest.Owner");
+        var handler = new UpdateDeviceStateHandler(repository.Object, homeOwnership.Object, new DeviceEventPublisher(eventPublisher.Object));
+        var user = MakeUser("user-1", "SmartNest.Owner");
 
         var act = () => handler.HandleAsync(user, device.DeviceId, MakeRequest());
 

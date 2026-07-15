@@ -178,7 +178,7 @@ stages:
                   displayName: 'Deploy Device Service Function App — dev'
                   inputs:
                     azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
+                    appType: functionApp
                     appName: 'smartnest-device-svc-dev'
                     package: '$(Pipeline.Workspace)/device-service-package/device-service.zip'
 
@@ -219,7 +219,7 @@ stages:
                   displayName: 'Deploy Device Service Function App — staging'
                   inputs:
                     azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
+                    appType: functionApp
                     appName: 'smartnest-device-svc-staging'
                     package: '$(Pipeline.Workspace)/device-service-package/device-service.zip'
 
@@ -260,6 +260,6 @@ stages:
                   displayName: 'Deploy Device Service Function App — prod'
                   inputs:
                     azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
+                    appType: functionApp
                     appName: 'smartnest-device-svc-prod'
                     package: '$(Pipeline.Workspace)/device-service-package/device-service.zip'

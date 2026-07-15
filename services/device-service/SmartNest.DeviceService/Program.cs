@@ -48,6 +48,19 @@ builder.Services.AddSingleton(sp =>
     return client.GetContainer(databaseName, containerName);
 });
 
+// Read-only lookup against the shared "homes" container - used to verify the caller
+// owns the target home (AuthorizationGuard.RequireOwnership), instead of trusting the
+// JWT's homeId claim (see IHomeOwnershipRepository / plan-deviceService.prompt.md).
+// Constructed directly from CosmosClient (not a second Container DI registration) to
+// avoid colliding with the "devices" Container registered above.
+builder.Services.AddSingleton<IHomeOwnershipRepository>(sp =>
+{
+    var client = sp.GetRequiredService<CosmosClient>();
+    var databaseName = configuration["Cosmos:DatabaseName"] ?? "smartnest-db";
+    var homesContainerName = configuration["Cosmos:HomesContainerName"] ?? "homes";
+    return new CosmosHomeOwnershipRepository(client.GetContainer(databaseName, homesContainerName));
+});
+
 // Service Bus — publishes to the "device-events" topic using the least-privilege
 // DeviceServiceSend (send-only) connection string (see infra/main.bicep).
 builder.Services.AddSingleton(_ =>
