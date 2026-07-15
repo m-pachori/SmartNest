@@ -1,12 +1,22 @@
 # ============================================================
-#  SmartNest — Azure Pipelines CI/CD
+#  SmartNest — Infra CI/CD (Bicep only)
+#
+#  Deploys Azure infrastructure (infra/main.bicep) independently of
+#  application code. Split out from the previous single
+#  azure-pipelines.yml so infra changes and service code changes can
+#  be reviewed, approved, and deployed on separate cadences.
 #
 #  Pipeline stages:
 #    1. Validate   — preflight var check + bicep build + az deployment validate
 #    2. WhatIf     — az deployment what-if (informational, never modifies)
-#    3. DeployDev  — deploy to dev (auto on main branch)
-#    4. DeployStaging — deploy to staging (manual approval gate)
-#    5. DeployProd    — deploy to prod    (manual approval gate)
+#    3. DeployDev  — deploy infra to dev (auto on main branch)
+#    4. DeployStaging — deploy infra to staging (manual approval gate)
+#    5. DeployProd    — deploy infra to prod    (manual approval gate)
+#
+#  This pipeline never touches application code — it only creates/
+#  updates Azure resources (including empty Function App shells).
+#  Use azure-pipelines-code.yml to publish service code into those
+#  Function Apps.
 #
 #  Required variable group "smartnest-common" (Pipelines → Library):
 #    AZURE_SUBSCRIPTION_ID   — Azure subscription GUID
@@ -17,15 +27,13 @@
 #
 #  Service connection:
 #    "smartnest-azure-sc" — Azure Resource Manager service connection
-#    (Contributor on subscription or on the three resource groups)
+#    (Contributor + User Access Administrator on the subscription or
+#    on the three resource groups — Contributor alone is not enough
+#    because main.bicep creates role assignments; see infra/README.md)
 #
-#  Fix C2: secrets are written to a temp JSON file and passed as
-#           @/tmp/param-overrides.json — never echoed as CLI args.
-#  Fix M2: WhatIf stage now creates the dev RG before running what-if.
-#  Fix M4: Validate stage has a preflight step that fails fast if
-#           required variables are missing or still hold placeholder values.
-#  Fix L3: SmartNestPlan feature branch removed from trigger — only
-#           main triggers the full pipeline; PRs trigger validate only.
+#  One-time Azure DevOps setup: register this file as its own
+#  Pipeline (Pipelines → New pipeline → point at this YAML path),
+#  separate from azure-pipelines-code.yml.
 # ============================================================
 
 trigger:
@@ -35,8 +43,7 @@ trigger:
   paths:
     include:
       - infra/**
-      - services/**
-      - azure-pipelines.yml
+      - azure-pipelines-infra.yml
 
 pr:
   branches:
@@ -45,7 +52,6 @@ pr:
   paths:
     include:
       - infra/**
-      - services/**
 
 variables:
   - group: smartnest-common        # shared secrets / config (see header)
@@ -61,10 +67,6 @@ variables:
     value: smartnest-rg-prod
   - name: location
     value: eastus
-  - name: homeServiceSolution
-    value: services/SmartNest.sln
-  - name: homeServiceProject
-    value: services/home-service/SmartNest.HomeService/SmartNest.HomeService.csproj
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 1 — Validate (runs on every push / PR)
@@ -80,7 +82,7 @@ stages:
         steps:
           - checkout: self
 
-          # Fix M4 — fail fast if required secrets are not configured
+          # Fail fast if required secrets are not configured
           - script: |
               ERRORS=0
               if [ -z "$(AZURE_TENANT_ID)" ] || [ "$(AZURE_TENANT_ID)" = "YOUR_TENANT_ID" ]; then
@@ -133,7 +135,7 @@ stages:
                   --tags project=smartnest environment=dev managedBy=bicep \
                   --output table
 
-          # Fix C2 — write secrets to a temp file; never pass as inline CLI args
+          # Secrets via temp file — never echoed as CLI args
           - task: AzureCLI@2
             displayName: 'ARM validate — dev'
             inputs:
@@ -161,65 +163,6 @@ stages:
                 rm -f /tmp/param-overrides.json
 
 # ─────────────────────────────────────────────────────────────
-# STAGE 1b — Build & Test Home Service (runs in parallel with
-# Validate on every push / PR; independent of the infra stages)
-# ─────────────────────────────────────────────────────────────
-  - stage: BuildAndTestHomeService
-    displayName: '🧪 Build & Test — Home Service'
-    jobs:
-      - job: BuildAndTest
-        displayName: 'dotnet build + test + publish'
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - checkout: self
-
-          - task: UseDotNet@2
-            displayName: 'Use .NET 8 SDK'
-            inputs:
-              packageType: sdk
-              version: '8.0.x'
-
-          - script: dotnet restore $(homeServiceSolution)
-            displayName: 'dotnet restore'
-
-          - script: dotnet build $(homeServiceSolution) --configuration Release --no-restore
-            displayName: 'dotnet build'
-
-          - script: |
-              dotnet test $(homeServiceSolution) \
-                --configuration Release --no-build \
-                --logger trx --results-directory $(Agent.TempDirectory)/testresults
-            displayName: 'dotnet test'
-
-          - task: PublishTestResults@2
-            displayName: 'Publish test results'
-            condition: succeededOrFailed()
-            inputs:
-              testResultsFormat: 'VSTest'
-              testResultsFiles: '**/*.trx'
-              searchFolder: '$(Agent.TempDirectory)/testresults'
-
-          - script: |
-              dotnet publish $(homeServiceProject) \
-                --configuration Release --no-build \
-                --output $(Build.ArtifactStagingDirectory)/home-service
-            displayName: 'dotnet publish Home Service'
-
-          - task: ArchiveFiles@2
-            displayName: 'Archive Home Service publish output'
-            inputs:
-              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/home-service'
-              includeRootFolder: false
-              archiveType: zip
-              archiveFile: '$(Build.ArtifactStagingDirectory)/home-service.zip'
-              replaceExistingArchive: true
-
-          - publish: $(Build.ArtifactStagingDirectory)/home-service.zip
-            artifact: home-service-package
-            displayName: 'Publish Home Service package artifact'
-
-# ─────────────────────────────────────────────────────────────
 # STAGE 2 — What-If (runs on every push / PR, informational)
 # ─────────────────────────────────────────────────────────────
   - stage: WhatIf
@@ -234,7 +177,7 @@ stages:
         steps:
           - checkout: self
 
-          # Fix M2 — ensure the RG exists before what-if (may be first run)
+          # Ensure the RG exists before what-if (may be first run)
           - task: AzureCLI@2
             displayName: 'Ensure dev resource group'
             inputs:
@@ -249,7 +192,7 @@ stages:
                   --tags project=smartnest environment=dev managedBy=bicep \
                   --output table
 
-          # Fix C2 — secrets via temp file
+          # Secrets via temp file
           - task: AzureCLI@2
             displayName: 'What-if — dev'
             inputs:
@@ -279,10 +222,8 @@ stages:
 # STAGE 3 — Deploy Dev  (main branch only, auto)
 # ─────────────────────────────────────────────────────────────
   - stage: DeployDev
-    displayName: '🚀 Deploy — Dev'
-    dependsOn:
-      - WhatIf
-      - BuildAndTestHomeService
+    displayName: '🚀 Deploy Infra — Dev'
+    dependsOn: WhatIf
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
       - deployment: DeployDevInfra
@@ -296,7 +237,6 @@ stages:
               steps:
                 - checkout: self
 
-                # Fix C2 — secrets via temp file
                 - task: AzureCLI@2
                   displayName: 'Deploy — dev'
                   inputs:
@@ -325,28 +265,16 @@ stages:
                         --template-file $(templateFile) \
                         --parameters @infra/parameters/dev.parameters.json \
                         --parameters @/tmp/param-overrides.json \
-                        --name "smartnest-dev-$(Build.BuildId)" \
+                        --name "smartnest-infra-dev-$(Build.BuildId)" \
                         --output table
 
                       rm -f /tmp/param-overrides.json
-
-                - download: current
-                  artifact: home-service-package
-                  displayName: 'Download Home Service package'
-
-                - task: AzureFunctionApp@2
-                  displayName: 'Deploy Home Service Function App — dev'
-                  inputs:
-                    azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
-                    appName: 'smartnest-home-svc-dev'
-                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 4 — Deploy Staging  (manual approval gate)
 # ─────────────────────────────────────────────────────────────
   - stage: DeployStaging
-    displayName: '🚀 Deploy — Staging'
+    displayName: '🚀 Deploy Infra — Staging'
     dependsOn: DeployDev
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
@@ -361,7 +289,6 @@ stages:
               steps:
                 - checkout: self
 
-                # Fix C2 — secrets via temp file
                 - task: AzureCLI@2
                   displayName: 'Deploy — staging'
                   inputs:
@@ -390,28 +317,16 @@ stages:
                         --template-file $(templateFile) \
                         --parameters @infra/parameters/staging.parameters.json \
                         --parameters @/tmp/param-overrides.json \
-                        --name "smartnest-staging-$(Build.BuildId)" \
+                        --name "smartnest-infra-staging-$(Build.BuildId)" \
                         --output table
 
                       rm -f /tmp/param-overrides.json
-
-                - download: current
-                  artifact: home-service-package
-                  displayName: 'Download Home Service package'
-
-                - task: AzureFunctionApp@2
-                  displayName: 'Deploy Home Service Function App — staging'
-                  inputs:
-                    azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
-                    appName: 'smartnest-home-svc-staging'
-                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 5 — Deploy Prod  (manual approval gate)
 # ─────────────────────────────────────────────────────────────
   - stage: DeployProd
-    displayName: '🚀 Deploy — Prod'
+    displayName: '🚀 Deploy Infra — Prod'
     dependsOn: DeployStaging
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
@@ -426,7 +341,6 @@ stages:
               steps:
                 - checkout: self
 
-                # Fix C2 — secrets via temp file
                 - task: AzureCLI@2
                   displayName: 'Deploy — prod'
                   inputs:
@@ -455,19 +369,7 @@ stages:
                         --template-file $(templateFile) \
                         --parameters @infra/parameters/prod.parameters.json \
                         --parameters @/tmp/param-overrides.json \
-                        --name "smartnest-prod-$(Build.BuildId)" \
+                        --name "smartnest-infra-prod-$(Build.BuildId)" \
                         --output table
 
                       rm -f /tmp/param-overrides.json
-
-                - download: current
-                  artifact: home-service-package
-                  displayName: 'Download Home Service package'
-
-                - task: AzureFunctionApp@2
-                  displayName: 'Deploy Home Service Function App — prod'
-                  inputs:
-                    azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
-                    appName: 'smartnest-home-svc-prod'
-                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'

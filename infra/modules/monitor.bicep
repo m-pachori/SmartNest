@@ -93,7 +93,7 @@ resource ingestionAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
     enabled: true
     scopes: [ appInsightsId ]
     evaluationFrequency: 'PT1H'
-    windowSize: 'PT24H'
+    windowSize: 'P1D'
     criteria: {
       'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
       allOf: [
