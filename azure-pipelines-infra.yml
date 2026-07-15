@@ -1,0 +1,375 @@
+# ============================================================
+#  SmartNest — Infra CI/CD (Bicep only)
+#
+#  Deploys Azure infrastructure (infra/main.bicep) independently of
+#  application code. Split out from the previous single
+#  azure-pipelines.yml so infra changes and service code changes can
+#  be reviewed, approved, and deployed on separate cadences.
+#
+#  Pipeline stages:
+#    1. Validate   — preflight var check + bicep build + az deployment validate
+#    2. WhatIf     — az deployment what-if (informational, never modifies)
+#    3. DeployDev  — deploy infra to dev (auto on main branch)
+#    4. DeployStaging — deploy infra to staging (manual approval gate)
+#    5. DeployProd    — deploy infra to prod    (manual approval gate)
+#
+#  This pipeline never touches application code — it only creates/
+#  updates Azure resources (including empty Function App shells).
+#  Use azure-pipelines-code.yml to publish service code into those
+#  Function Apps.
+#
+#  Required variable group "smartnest-common" (Pipelines → Library):
+#    AZURE_SUBSCRIPTION_ID   — Azure subscription GUID
+#    AZURE_TENANT_ID         — Entra ID tenant GUID           (mark secret)
+#    API_APP_CLIENT_ID       — App Registration client ID     (mark secret)
+#    APIM_PUBLISHER_EMAIL    — APIM publisher e-mail          (mark secret)
+#    MONITOR_ALERT_EMAIL     — Alert notification e-mail      (mark secret)
+#
+#  Service connection:
+#    "smartnest-azure-sc" — Azure Resource Manager service connection
+#    (Contributor + User Access Administrator on the subscription or
+#    on the three resource groups — Contributor alone is not enough
+#    because main.bicep creates role assignments; see infra/README.md)
+#
+#  One-time Azure DevOps setup: register this file as its own
+#  Pipeline (Pipelines → New pipeline → point at this YAML path),
+#  separate from azure-pipelines-code.yml.
+# ============================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infra/**
+      - azure-pipelines-infra.yml
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infra/**
+
+variables:
+  - group: smartnest-common        # shared secrets / config (see header)
+  - name: templateFile
+    value: infra/main.bicep
+  - name: azureServiceConnection
+    value: smartnest-azure-sc
+  - name: devResourceGroup
+    value: smartnest-rg-dev
+  - name: stagingResourceGroup
+    value: smartnest-rg-staging
+  - name: prodResourceGroup
+    value: smartnest-rg-prod
+  - name: location
+    value: eastus
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 1 — Validate (runs on every push / PR)
+# ─────────────────────────────────────────────────────────────
+stages:
+  - stage: Validate
+    displayName: '🔍 Validate Bicep'
+    jobs:
+      - job: ValidateBicep
+        displayName: 'Preflight + Bicep lint + ARM validate'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          # Fail fast if required secrets are not configured
+          - script: |
+              ERRORS=0
+              if [ -z "$(AZURE_TENANT_ID)" ] || [ "$(AZURE_TENANT_ID)" = "YOUR_TENANT_ID" ]; then
+                echo "##vso[task.logissue type=error]AZURE_TENANT_ID is missing or still holds the placeholder value. Populate it in the 'smartnest-common' variable group."
+                ERRORS=$((ERRORS+1))
+              fi
+              if [ -z "$(API_APP_CLIENT_ID)" ] || [ "$(API_APP_CLIENT_ID)" = "YOUR_API_APP_CLIENT_ID" ]; then
+                echo "##vso[task.logissue type=error]API_APP_CLIENT_ID is missing or still holds the placeholder value. Run infra/setup-entra.sh first."
+                ERRORS=$((ERRORS+1))
+              fi
+              if [ -z "$(APIM_PUBLISHER_EMAIL)" ]; then
+                echo "##vso[task.logissue type=error]APIM_PUBLISHER_EMAIL is not set in the 'smartnest-common' variable group."
+                ERRORS=$((ERRORS+1))
+              fi
+              if [ -z "$(MONITOR_ALERT_EMAIL)" ]; then
+                echo "##vso[task.logissue type=error]MONITOR_ALERT_EMAIL is not set in the 'smartnest-common' variable group."
+                ERRORS=$((ERRORS+1))
+              fi
+              if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+              echo "Preflight passed — all required variables are set."
+            displayName: 'Preflight — validate required variables'
+
+          - task: AzureCLI@2
+            displayName: 'Install Bicep CLI'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: az bicep install
+
+          - task: AzureCLI@2
+            displayName: 'Bicep build (lint)'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: az bicep build --file $(templateFile)
+
+          - task: AzureCLI@2
+            displayName: 'Ensure dev resource group'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az group create \
+                  --name $(devResourceGroup) \
+                  --location $(location) \
+                  --tags project=smartnest environment=dev managedBy=bicep \
+                  --output table
+
+          # Secrets via temp file — never echoed as CLI args
+          - task: AzureCLI@2
+            displayName: 'ARM validate — dev'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                cat > /tmp/param-overrides.json << EOF
+                {
+                  "tenantId":                 { "value": "$(AZURE_TENANT_ID)" },
+                  "apiAppClientId":           { "value": "$(API_APP_CLIENT_ID)" },
+                  "apimPublisherEmail":        { "value": "$(APIM_PUBLISHER_EMAIL)" },
+                  "monitorAlertEmailAddress": { "value": "$(MONITOR_ALERT_EMAIL)" }
+                }
+                EOF
+
+                az deployment group validate \
+                  --resource-group $(devResourceGroup) \
+                  --template-file $(templateFile) \
+                  --parameters @infra/parameters/dev.parameters.json \
+                  --parameters @/tmp/param-overrides.json \
+                  --output table
+
+                rm -f /tmp/param-overrides.json
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 2 — What-If (runs on every push / PR, informational)
+# ─────────────────────────────────────────────────────────────
+  - stage: WhatIf
+    displayName: '📋 What-If Preview (dev)'
+    dependsOn: Validate
+    condition: succeeded()
+    jobs:
+      - job: WhatIfDev
+        displayName: 'What-if against dev'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          # Ensure the RG exists before what-if (may be first run)
+          - task: AzureCLI@2
+            displayName: 'Ensure dev resource group'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az group create \
+                  --name $(devResourceGroup) \
+                  --location $(location) \
+                  --tags project=smartnest environment=dev managedBy=bicep \
+                  --output table
+
+          # Secrets via temp file
+          - task: AzureCLI@2
+            displayName: 'What-if — dev'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                cat > /tmp/param-overrides.json << EOF
+                {
+                  "tenantId":                 { "value": "$(AZURE_TENANT_ID)" },
+                  "apiAppClientId":           { "value": "$(API_APP_CLIENT_ID)" },
+                  "apimPublisherEmail":        { "value": "$(APIM_PUBLISHER_EMAIL)" },
+                  "monitorAlertEmailAddress": { "value": "$(MONITOR_ALERT_EMAIL)" }
+                }
+                EOF
+
+                az deployment group what-if \
+                  --resource-group $(devResourceGroup) \
+                  --template-file $(templateFile) \
+                  --parameters @infra/parameters/dev.parameters.json \
+                  --parameters @/tmp/param-overrides.json
+
+                rm -f /tmp/param-overrides.json
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 3 — Deploy Dev  (main branch only, auto)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployDev
+    displayName: '🚀 Deploy Infra — Dev'
+    dependsOn: WhatIf
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployDevInfra
+        displayName: 'Deploy Bicep to dev'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-dev     # create in Azure DevOps Environments for audit trail
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy — dev'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      az group create \
+                        --name $(devResourceGroup) \
+                        --location $(location) \
+                        --tags project=smartnest environment=dev managedBy=bicep \
+                        --output table
+
+                      cat > /tmp/param-overrides.json << EOF
+                      {
+                        "tenantId":                 { "value": "$(AZURE_TENANT_ID)" },
+                        "apiAppClientId":           { "value": "$(API_APP_CLIENT_ID)" },
+                        "apimPublisherEmail":        { "value": "$(APIM_PUBLISHER_EMAIL)" },
+                        "monitorAlertEmailAddress": { "value": "$(MONITOR_ALERT_EMAIL)" }
+                      }
+                      EOF
+
+                      az deployment group create \
+                        --resource-group $(devResourceGroup) \
+                        --template-file $(templateFile) \
+                        --parameters @infra/parameters/dev.parameters.json \
+                        --parameters @/tmp/param-overrides.json \
+                        --name "smartnest-infra-dev-$(Build.BuildId)" \
+                        --output table
+
+                      rm -f /tmp/param-overrides.json
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 4 — Deploy Staging  (manual approval gate)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployStaging
+    displayName: '🚀 Deploy Infra — Staging'
+    dependsOn: DeployDev
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployStagingInfra
+        displayName: 'Deploy Bicep to staging'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-staging  # add an Approvals check in Azure DevOps Environments UI
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy — staging'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      az group create \
+                        --name $(stagingResourceGroup) \
+                        --location $(location) \
+                        --tags project=smartnest environment=staging managedBy=bicep \
+                        --output table
+
+                      cat > /tmp/param-overrides.json << EOF
+                      {
+                        "tenantId":                 { "value": "$(AZURE_TENANT_ID)" },
+                        "apiAppClientId":           { "value": "$(API_APP_CLIENT_ID)" },
+                        "apimPublisherEmail":        { "value": "$(APIM_PUBLISHER_EMAIL)" },
+                        "monitorAlertEmailAddress": { "value": "$(MONITOR_ALERT_EMAIL)" }
+                      }
+                      EOF
+
+                      az deployment group create \
+                        --resource-group $(stagingResourceGroup) \
+                        --template-file $(templateFile) \
+                        --parameters @infra/parameters/staging.parameters.json \
+                        --parameters @/tmp/param-overrides.json \
+                        --name "smartnest-infra-staging-$(Build.BuildId)" \
+                        --output table
+
+                      rm -f /tmp/param-overrides.json
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 5 — Deploy Prod  (manual approval gate)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployProd
+    displayName: '🚀 Deploy Infra — Prod'
+    dependsOn: DeployStaging
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployProdInfra
+        displayName: 'Deploy Bicep to prod'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-prod    # add an Approvals check in Azure DevOps Environments UI
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy — prod'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      az group create \
+                        --name $(prodResourceGroup) \
+                        --location $(location) \
+                        --tags project=smartnest environment=prod managedBy=bicep \
+                        --output table
+
+                      cat > /tmp/param-overrides.json << EOF
+                      {
+                        "tenantId":                 { "value": "$(AZURE_TENANT_ID)" },
+                        "apiAppClientId":           { "value": "$(API_APP_CLIENT_ID)" },
+                        "apimPublisherEmail":        { "value": "$(APIM_PUBLISHER_EMAIL)" },
+                        "monitorAlertEmailAddress": { "value": "$(MONITOR_ALERT_EMAIL)" }
+                      }
+                      EOF
+
+                      az deployment group create \
+                        --resource-group $(prodResourceGroup) \
+                        --template-file $(templateFile) \
+                        --parameters @infra/parameters/prod.parameters.json \
+                        --parameters @/tmp/param-overrides.json \
+                        --name "smartnest-infra-prod-$(Build.BuildId)" \
+                        --output table
+
+                      rm -f /tmp/param-overrides.json

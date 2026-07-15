@@ -125,8 +125,30 @@ In **Project Settings → Service Connections**:
 
 1. Click **New service connection → Azure Resource Manager**
 2. Select **Service principal (automatic)** or **Workload Identity federation**
-3. Scope to your subscription (Contributor role required)
+3. Scope to your subscription
 4. Name it exactly **`smartnest-azure-sc`**
+5. Grant the service principal **both** of the following roles at the subscription (or
+   per-resource-group) scope — `Contributor` alone is **not** enough, because `main.bicep`
+   creates a `Microsoft.Authorization/roleAssignments` resource (Key Vault Secrets User grant
+   for the Function App's managed identity), which requires
+   `Microsoft.Authorization/roleAssignments/write`:
+   - `Contributor` — to create/manage resources
+   - `User Access Administrator` — to create the role assignment(s)
+
+   ```bash
+   # Replace <sp-object-id> with the service connection's SP object id (shown in the
+   # error message as "with object id '<...>'"), and <scope> with the subscription or
+   # resource group scope (e.g. /subscriptions/<sub-id>/resourceGroups/smartnest-rg-dev)
+   az role assignment create \
+     --assignee-object-id <sp-object-id> \
+     --assignee-principal-type ServicePrincipal \
+     --role "User Access Administrator" \
+     --scope <scope>
+   ```
+
+   Repeat for each environment's resource group (`smartnest-rg-dev`, `smartnest-rg-staging`,
+   `smartnest-rg-prod`), or assign once at the subscription scope if the same service
+   connection is used for all three.
 
 #### 2. Create the Variable Group
 

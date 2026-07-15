@@ -1,0 +1,208 @@
+# ============================================================
+#  SmartNest — Service Code CI/CD (build, test, deploy app code)
+#
+#  Builds, tests, and deploys .NET service code into Function Apps
+#  that already exist (created by azure-pipelines-infra.yml). This
+#  pipeline never touches Azure infrastructure — it only publishes
+#  code into existing Function App resources.
+#
+#  Pipeline stages:
+#    1. BuildAndTest   — dotnet build + test + publish (every push / PR)
+#    2. DeployDev       — deploy code to dev (auto on main branch)
+#    3. DeployStaging   — deploy code to staging (manual approval gate)
+#    4. DeployProd      — deploy code to prod    (manual approval gate)
+#
+#  Prerequisite: the target Function Apps (e.g. smartnest-home-svc-*)
+#  must already exist in each environment — run azure-pipelines-infra.yml
+#  first (or after any change that adds a new service's infra).
+#
+#  Required variable group "smartnest-common" (Pipelines → Library) —
+#  same group as the infra pipeline; only the service connection name
+#  is actually used here.
+#
+#  Service connection:
+#    "smartnest-azure-sc" — Azure Resource Manager service connection
+#    (Contributor is sufficient for this pipeline — it only deploys
+#    code to existing Function Apps, no role assignments are created)
+#
+#  One-time Azure DevOps setup: register this file as its own
+#  Pipeline (Pipelines → New pipeline → point at this YAML path),
+#  separate from azure-pipelines-infra.yml.
+#
+#  Adding a new service: add its solution/project variables below,
+#  add a publish/archive/artifact step in BuildAndTest, and add an
+#  AzureFunctionApp@2 step per environment in each Deploy stage —
+#  mirroring the Home Service steps.
+# ============================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - services/**
+      - azure-pipelines-code.yml
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - services/**
+
+variables:
+  - group: smartnest-common        # shared secrets / config (see header)
+  - name: azureServiceConnection
+    value: smartnest-azure-sc
+  - name: homeServiceSolution
+    value: services/SmartNest.sln
+  - name: homeServiceProject
+    value: services/home-service/SmartNest.HomeService/SmartNest.HomeService.csproj
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 1 — Build & Test (runs on every push / PR)
+# ─────────────────────────────────────────────────────────────
+stages:
+  - stage: BuildAndTestHomeService
+    displayName: '🧪 Build & Test — Home Service'
+    jobs:
+      - job: BuildAndTest
+        displayName: 'dotnet build + test + publish'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: UseDotNet@2
+            displayName: 'Use .NET 8 SDK'
+            inputs:
+              packageType: sdk
+              version: '8.0.x'
+
+          - script: dotnet restore $(homeServiceSolution)
+            displayName: 'dotnet restore'
+
+          - script: dotnet build $(homeServiceSolution) --configuration Release --no-restore
+            displayName: 'dotnet build'
+
+          - script: |
+              dotnet test $(homeServiceSolution) \
+                --configuration Release --no-build \
+                --logger trx --results-directory $(Agent.TempDirectory)/testresults
+            displayName: 'dotnet test'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish test results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'VSTest'
+              testResultsFiles: '**/*.trx'
+              searchFolder: '$(Agent.TempDirectory)/testresults'
+
+          - script: |
+              dotnet publish $(homeServiceProject) \
+                --configuration Release --no-build \
+                --output $(Build.ArtifactStagingDirectory)/home-service
+            displayName: 'dotnet publish Home Service'
+
+          - task: ArchiveFiles@2
+            displayName: 'Archive Home Service publish output'
+            inputs:
+              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/home-service'
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: '$(Build.ArtifactStagingDirectory)/home-service.zip'
+              replaceExistingArchive: true
+
+          - publish: $(Build.ArtifactStagingDirectory)/home-service.zip
+            artifact: home-service-package
+            displayName: 'Publish Home Service package artifact'
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 2 — Deploy Dev  (main branch only, auto)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployDev
+    displayName: '🚀 Deploy Code — Dev'
+    dependsOn: BuildAndTestHomeService
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployDevCode
+        displayName: 'Deploy service code to dev'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-dev     # create in Azure DevOps Environments for audit trail
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: home-service-package
+                  displayName: 'Download Home Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Home Service Function App — dev'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-home-svc-dev'
+                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 3 — Deploy Staging  (manual approval gate)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployStaging
+    displayName: '🚀 Deploy Code — Staging'
+    dependsOn: DeployDev
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployStagingCode
+        displayName: 'Deploy service code to staging'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-staging  # add an Approvals check in Azure DevOps Environments UI
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: home-service-package
+                  displayName: 'Download Home Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Home Service Function App — staging'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-home-svc-staging'
+                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 4 — Deploy Prod  (manual approval gate)
+# ─────────────────────────────────────────────────────────────
+  - stage: DeployProd
+    displayName: '🚀 Deploy Code — Prod'
+    dependsOn: DeployStaging
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployProdCode
+        displayName: 'Deploy service code to prod'
+        pool:
+          vmImage: ubuntu-latest
+        environment: smartnest-prod    # add an Approvals check in Azure DevOps Environments UI
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: home-service-package
+                  displayName: 'Download Home Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Home Service Function App — prod'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-home-svc-prod'
+                    package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
