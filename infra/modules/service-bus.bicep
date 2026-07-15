@@ -190,6 +190,14 @@ resource deviceServiceSendRule 'Microsoft.ServiceBus/namespaces/authorizationRul
   }
 }
 
+resource identityServiceSendRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
+  parent: serviceBusNamespace
+  name: 'IdentityServiceSend'
+  properties: {
+    rights: [ 'Send' ]
+  }
+}
+
 resource auditServiceListenRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
   parent: serviceBusNamespace
   name: 'AuditServiceListen'
@@ -222,6 +230,10 @@ output functionsConnectionString string = functionsRootRule.listKeys().primaryCo
 @description('DeviceService send-only connection string - passed directly to Key Vault. Never log.')
 @secure()
 output deviceServiceSendConnectionString string = deviceServiceSendRule.listKeys().primaryConnectionString
+
+@description('IdentityService send-only connection string - passed directly to Key Vault. Never log.')
+@secure()
+output identityServiceSendConnectionString string = identityServiceSendRule.listKeys().primaryConnectionString
 
 @description('AuditService listen-only connection string - passed directly to Key Vault. Never log.')
 @secure()

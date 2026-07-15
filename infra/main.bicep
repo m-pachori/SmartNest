@@ -94,6 +94,12 @@ param deviceServiceFunctionAppName string = '${projectName}-device-svc-${environ
 @description('Device Service Function App hosting plan name')
 param deviceServiceHostingPlanName string = '${projectName}-device-svc-plan-${environment}'
 
+@description('Identity Service Function App name')
+param identityServiceFunctionAppName string = '${projectName}-identity-svc-${environment}'
+
+@description('Identity Service Function App hosting plan name')
+param identityServiceHostingPlanName string = '${projectName}-identity-svc-plan-${environment}'
+
 // ------------------------------------------------------------------
 // Shared Tags - applied to every resource
 // ------------------------------------------------------------------
@@ -211,6 +217,7 @@ module keyVaultModule 'modules/key-vault.bicep' = {
     storageConnectionString: storageModule.outputs.storageConnectionString
     serviceBusFunctionsConnectionString: serviceBusModule.outputs.functionsConnectionString
     serviceBusDeviceSvcSendConnectionString: serviceBusModule.outputs.deviceServiceSendConnectionString
+    serviceBusIdentitySvcSendConnectionString: serviceBusModule.outputs.identityServiceSendConnectionString
     serviceBusAuditSvcListenConnectionString: serviceBusModule.outputs.auditServiceListenConnectionString
     tags: commonTags
   }
@@ -238,6 +245,7 @@ module homeFunctionAppModule 'modules/function-app.bicep' = {
     additionalAppSettings: {
       'Cosmos:HomesContainerName': 'homes'
       'Cosmos:DevicesContainerName': 'devices'
+      'Cosmos:UsersContainerName': 'users'
     }
     tags: commonTags
   }
@@ -442,6 +450,108 @@ module deviceApiModule 'modules/apim-api.bicep' = if (deployApim) {
 }
 
 // ------------------------------------------------------------------
+// Module: Identity Service Function App (Task 4)
+// Consumption plan, .NET 8 Isolated. Reuses the shared platform
+// storage account, Cosmos DB, App Insights, and the least-privilege
+// IdentityServiceSend (send-only) Service Bus connection string -
+// Identity Service only ever publishes to user-events, never listens.
+// ------------------------------------------------------------------
+module identityFunctionAppModule 'modules/function-app.bicep' = {
+  name: 'deploy-identity-function-app'
+  params: {
+    location: location
+    serviceName: 'identity'
+    functionAppName: identityServiceFunctionAppName
+    hostingPlanName: identityServiceHostingPlanName
+    storageConnectionString: storageModule.outputs.storageConnectionString
+    cosmosEndpoint: cosmosModule.outputs.cosmosEndpoint
+    cosmosDatabaseName: cosmosDatabaseName
+    cosmosPrimaryKeySecretUri: keyVaultModule.outputs.cosmosPrimaryKeySecretUri
+    serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusIdentitySvcSendSecretUri
+    appInsightsConnectionString: appInsightsModule.outputs.connectionString
+    additionalAppSettings: {
+      'Cosmos:UsersContainerName': 'users'
+      // Read-only lookup used for the ownership check (Cosmos-level home
+      // ownership verification, mirroring Home/Device Service - see
+      // IHomeOwnershipRepository) instead of trusting the JWT homeId claim.
+      'Cosmos:HomesContainerName': 'homes'
+    }
+    tags: commonTags
+  }
+}
+
+// ------------------------------------------------------------------
+// Grant the Identity Service Function App's managed identity access to
+// read secrets from Key Vault (required — Key Vault uses RBAC, not
+// access policies; see infra/modules/key-vault.bicep).
+// ------------------------------------------------------------------
+resource identityFunctionAppKvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(existingKeyVaultForRoleAssignment.id, identityServiceFunctionAppName, kvSecretsUserRoleId)
+  scope: existingKeyVaultForRoleAssignment
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalId: identityFunctionAppModule.outputs.functionAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ------------------------------------------------------------------
+// Store the Identity Service Function App's default host key in Key
+// Vault so APIM can reference it as a named value (see apim-api.bicep).
+// Only needed when APIM is deployed (tech debt - disabled by default).
+// ------------------------------------------------------------------
+resource identitySvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployApim) {
+  parent: existingKeyVaultForRoleAssignment
+  name: 'identity-svc-function-key'
+  properties: {
+    value: identityFunctionAppModule.outputs.defaultFunctionKey
+  }
+}
+
+// ------------------------------------------------------------------
+// Module: Register the Identity Service API in APIM (route prefix /users,
+// plus POST /homes/{homeId}/users/invite for inviting members)
+// Disabled by default (tech debt) - see deployApim param above.
+// ------------------------------------------------------------------
+module identityApiModule 'modules/apim-api.bicep' = if (deployApim) {
+  name: 'deploy-identity-api'
+  params: {
+    apimServiceName: apimModule.outputs.apimServiceName
+    apiName: 'users'
+    apiDisplayName: 'Identity Service'
+    backendHostName: identityFunctionAppModule.outputs.functionAppDefaultHostName
+    functionKeySecretUri: identitySvcFunctionKeySecret.properties.secretUri
+    productName: 'smartnest-backend'
+    operations: [
+      {
+        name: 'invite-user'
+        displayName: 'Invite User'
+        method: 'POST'
+        urlTemplate: '/homes/{homeId}/users/invite'
+        templateParameters: [ { name: 'homeId', type: 'string', required: true } ]
+      }
+      {
+        name: 'update-user-role'
+        displayName: 'Update User Role'
+        method: 'PUT'
+        urlTemplate: '/users/{id}/role'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+      {
+        name: 'remove-user'
+        displayName: 'Remove User'
+        method: 'DELETE'
+        urlTemplate: '/homes/{homeId}/users/{userId}'
+        templateParameters: [
+          { name: 'homeId', type: 'string', required: true }
+          { name: 'userId', type: 'string', required: true }
+        ]
+      }
+    ]
+  }
+}
+
+// ------------------------------------------------------------------
 // Outputs - consumed by CI/CD pipelines and developer scripts
 // Fix C1: no secret values are output here. Use Key Vault secret URIs
 //          to wire Function App settings via Key Vault references.
@@ -474,6 +584,7 @@ output cosmosPrimaryKeySecretUri string = keyVaultModule.outputs.cosmosPrimaryKe
 output storageConnectionStringSecretUri string = keyVaultModule.outputs.storageConnectionStringSecretUri
 output serviceBusFunctionsSecretUri string = keyVaultModule.outputs.serviceBusFunctionsSecretUri
 output serviceBusDeviceSvcSendSecretUri string = keyVaultModule.outputs.serviceBusDeviceSvcSendSecretUri
+output serviceBusIdentitySvcSendSecretUri string = keyVaultModule.outputs.serviceBusIdentitySvcSendSecretUri
 output serviceBusAuditSvcListenSecretUri string = keyVaultModule.outputs.serviceBusAuditSvcListenSecretUri
 
 // Home Service (Task 2)
@@ -485,3 +596,8 @@ output homeServiceApiName string = deployApim ? homeApiModule.outputs.apiName : 
 output deviceServiceFunctionAppName string = deviceFunctionAppModule.outputs.functionAppName
 output deviceServiceFunctionAppDefaultHostName string = deviceFunctionAppModule.outputs.functionAppDefaultHostName
 output deviceServiceApiName string = deployApim ? deviceApiModule.outputs.apiName : ''
+
+// Identity Service (Task 4)
+output identityServiceFunctionAppName string = identityFunctionAppModule.outputs.functionAppName
+output identityServiceFunctionAppDefaultHostName string = identityFunctionAppModule.outputs.functionAppDefaultHostName
+output identityServiceApiName string = deployApim ? identityApiModule.outputs.apiName : ''

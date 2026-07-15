@@ -53,6 +53,10 @@ param serviceBusFunctionsConnectionString string
 @secure()
 param serviceBusDeviceSvcSendConnectionString string
 
+@description('Service Bus IdentityService send-only connection string')
+@secure()
+param serviceBusIdentitySvcSendConnectionString string
+
 @description('Service Bus AuditService listen-only connection string')
 @secure()
 param serviceBusAuditSvcListenConnectionString string
@@ -139,6 +143,15 @@ resource secretSbDeviceSvc 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   }
 }
 
+resource secretSbIdentitySvc 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'servicebus-identitysvc-send-connection-string'
+  properties: {
+    value: serviceBusIdentitySvcSendConnectionString
+    attributes: { enabled: true }
+  }
+}
+
 resource secretSbAuditSvc 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'servicebus-auditsvc-listen-connection-string'
@@ -159,4 +172,5 @@ output cosmosPrimaryKeySecretUri string = secretCosmosPrimaryKey.properties.secr
 output storageConnectionStringSecretUri string = secretStorageConnectionString.properties.secretUri
 output serviceBusFunctionsSecretUri string = secretSbFunctions.properties.secretUri
 output serviceBusDeviceSvcSendSecretUri string = secretSbDeviceSvc.properties.secretUri
+output serviceBusIdentitySvcSendSecretUri string = secretSbIdentitySvc.properties.secretUri
 output serviceBusAuditSvcListenSecretUri string = secretSbAuditSvc.properties.secretUri
