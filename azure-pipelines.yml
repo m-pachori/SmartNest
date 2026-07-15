@@ -126,6 +126,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                set -euo pipefail
                 az group create \
                   --name $(devResourceGroup) \
                   --location $(location) \
@@ -140,6 +141,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                set -euo pipefail
                 cat > /tmp/param-overrides.json << EOF
                 {
                   "tenantId":                 { "value": "$(AZURE_TENANT_ID)" },
@@ -240,6 +242,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                set -euo pipefail
                 az group create \
                   --name $(devResourceGroup) \
                   --location $(location) \
@@ -254,6 +257,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                set -euo pipefail
                 cat > /tmp/param-overrides.json << EOF
                 {
                   "tenantId":                 { "value": "$(AZURE_TENANT_ID)" },
@@ -300,6 +304,7 @@ stages:
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
+                      set -euo pipefail
                       az group create \
                         --name $(devResourceGroup) \
                         --location $(location) \
@@ -364,6 +369,7 @@ stages:
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
+                      set -euo pipefail
                       az group create \
                         --name $(stagingResourceGroup) \
                         --location $(location) \
@@ -428,6 +434,7 @@ stages:
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
+                      set -euo pipefail
                       az group create \
                         --name $(prodResourceGroup) \
                         --location $(location) \
