@@ -60,13 +60,15 @@ variables:
     value: services/SmartNest.sln
   - name: homeServiceProject
     value: services/home-service/SmartNest.HomeService/SmartNest.HomeService.csproj
+  - name: deviceServiceProject
+    value: services/device-service/SmartNest.DeviceService/SmartNest.DeviceService.csproj
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 1 — Build & Test (runs on every push / PR)
 # ─────────────────────────────────────────────────────────────
 stages:
   - stage: BuildAndTestHomeService
-    displayName: '🧪 Build & Test — Home Service'
+    displayName: '🧪 Build & Test — Home + Device Services'
     jobs:
       - job: BuildAndTest
         displayName: 'dotnet build + test + publish'
@@ -120,6 +122,25 @@ stages:
             artifact: home-service-package
             displayName: 'Publish Home Service package artifact'
 
+          - script: |
+              dotnet publish $(deviceServiceProject) \
+                --configuration Release --no-build \
+                --output $(Build.ArtifactStagingDirectory)/device-service
+            displayName: 'dotnet publish Device Service'
+
+          - task: ArchiveFiles@2
+            displayName: 'Archive Device Service publish output'
+            inputs:
+              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/device-service'
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: '$(Build.ArtifactStagingDirectory)/device-service.zip'
+              replaceExistingArchive: true
+
+          - publish: $(Build.ArtifactStagingDirectory)/device-service.zip
+            artifact: device-service-package
+            displayName: 'Publish Device Service package artifact'
+
 # ─────────────────────────────────────────────────────────────
 # STAGE 2 — Deploy Dev  (main branch only, auto)
 # ─────────────────────────────────────────────────────────────
@@ -148,6 +169,18 @@ stages:
                     appType: functionAppLinux
                     appName: 'smartnest-home-svc-dev'
                     package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
+
+                - download: current
+                  artifact: device-service-package
+                  displayName: 'Download Device Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Device Service Function App — dev'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-device-svc-dev'
+                    package: '$(Pipeline.Workspace)/device-service-package/device-service.zip'
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 3 — Deploy Staging  (manual approval gate)
@@ -178,6 +211,18 @@ stages:
                     appName: 'smartnest-home-svc-staging'
                     package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
 
+                - download: current
+                  artifact: device-service-package
+                  displayName: 'Download Device Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Device Service Function App — staging'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-device-svc-staging'
+                    package: '$(Pipeline.Workspace)/device-service-package/device-service.zip'
+
 # ─────────────────────────────────────────────────────────────
 # STAGE 4 — Deploy Prod  (manual approval gate)
 # ─────────────────────────────────────────────────────────────
@@ -206,3 +251,15 @@ stages:
                     appType: functionAppLinux
                     appName: 'smartnest-home-svc-prod'
                     package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
+
+                - download: current
+                  artifact: device-service-package
+                  displayName: 'Download Device Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Device Service Function App — prod'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionAppLinux
+                    appName: 'smartnest-device-svc-prod'
+                    package: '$(Pipeline.Workspace)/device-service-package/device-service.zip'

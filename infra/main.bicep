@@ -85,6 +85,12 @@ param homeServiceFunctionAppName string = '${projectName}-home-svc-${environment
 @description('Home Service Function App hosting plan name')
 param homeServiceHostingPlanName string = '${projectName}-home-svc-plan-${environment}'
 
+@description('Device Service Function App name')
+param deviceServiceFunctionAppName string = '${projectName}-device-svc-${environment}'
+
+@description('Device Service Function App hosting plan name')
+param deviceServiceHostingPlanName string = '${projectName}-device-svc-plan-${environment}'
+
 // ------------------------------------------------------------------
 // Shared Tags - applied to every resource
 // ------------------------------------------------------------------
@@ -321,6 +327,106 @@ module homeApiModule 'modules/apim-api.bicep' = {
 }
 
 // ------------------------------------------------------------------
+// Module: Device Service Function App (Task 3)
+// Consumption plan, .NET 8 Isolated. Reuses the shared platform
+// storage account, Cosmos DB, App Insights, and the least-privilege
+// DeviceServiceSend (send-only) Service Bus connection string -
+// Device Service only ever publishes to device-events, never listens.
+// ------------------------------------------------------------------
+module deviceFunctionAppModule 'modules/function-app.bicep' = {
+  name: 'deploy-device-function-app'
+  params: {
+    location: location
+    serviceName: 'device'
+    functionAppName: deviceServiceFunctionAppName
+    hostingPlanName: deviceServiceHostingPlanName
+    storageConnectionStringSecretUri: keyVaultModule.outputs.storageConnectionStringSecretUri
+    cosmosEndpoint: cosmosModule.outputs.cosmosEndpoint
+    cosmosDatabaseName: cosmosDatabaseName
+    cosmosPrimaryKeySecretUri: keyVaultModule.outputs.cosmosPrimaryKeySecretUri
+    serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusDeviceSvcSendSecretUri
+    appInsightsConnectionString: appInsightsModule.outputs.connectionString
+    additionalAppSettings: {
+      'Cosmos:DevicesContainerName': 'devices'
+    }
+    tags: commonTags
+  }
+}
+
+// ------------------------------------------------------------------
+// Grant the Device Service Function App's managed identity access to
+// read secrets from Key Vault (required — Key Vault uses RBAC, not
+// access policies; see infra/modules/key-vault.bicep).
+// ------------------------------------------------------------------
+resource deviceFunctionAppKvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(existingKeyVaultForRoleAssignment.id, deviceServiceFunctionAppName, kvSecretsUserRoleId)
+  scope: existingKeyVaultForRoleAssignment
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalId: deviceFunctionAppModule.outputs.functionAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ------------------------------------------------------------------
+// Store the Device Service Function App's default host key in Key
+// Vault so APIM can reference it as a named value (see apim-api.bicep).
+// ------------------------------------------------------------------
+resource deviceSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: existingKeyVaultForRoleAssignment
+  name: 'device-svc-function-key'
+  properties: {
+    value: deviceFunctionAppModule.outputs.defaultFunctionKey
+  }
+}
+
+// ------------------------------------------------------------------
+// Module: Register the Device Service API in APIM (route prefix /devices,
+// plus POST /homes/{homeId}/devices for registration)
+// ------------------------------------------------------------------
+module deviceApiModule 'modules/apim-api.bicep' = {
+  name: 'deploy-device-api'
+  params: {
+    apimServiceName: apimModule.outputs.apimServiceName
+    apiName: 'devices'
+    apiDisplayName: 'Device Service'
+    backendHostName: deviceFunctionAppModule.outputs.functionAppDefaultHostName
+    functionKeySecretUri: deviceSvcFunctionKeySecret.properties.secretUri
+    productName: 'smartnest-backend'
+    operations: [
+      {
+        name: 'register-device'
+        displayName: 'Register Device'
+        method: 'POST'
+        urlTemplate: '/homes/{homeId}/devices'
+        templateParameters: [ { name: 'homeId', type: 'string', required: true } ]
+      }
+      {
+        name: 'get-device'
+        displayName: 'Get Device'
+        method: 'GET'
+        urlTemplate: '/devices/{id}'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+      {
+        name: 'update-device-state'
+        displayName: 'Update Device State'
+        method: 'PATCH'
+        urlTemplate: '/devices/{id}/state'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+      {
+        name: 'remove-device'
+        displayName: 'Remove Device'
+        method: 'DELETE'
+        urlTemplate: '/devices/{id}'
+        templateParameters: [ { name: 'id', type: 'string', required: true } ]
+      }
+    ]
+  }
+}
+
+// ------------------------------------------------------------------
 // Outputs - consumed by CI/CD pipelines and developer scripts
 // Fix C1: no secret values are output here. Use Key Vault secret URIs
 //          to wire Function App settings via Key Vault references.
@@ -359,3 +465,8 @@ output serviceBusAuditSvcListenSecretUri string = keyVaultModule.outputs.service
 output homeServiceFunctionAppName string = homeFunctionAppModule.outputs.functionAppName
 output homeServiceFunctionAppDefaultHostName string = homeFunctionAppModule.outputs.functionAppDefaultHostName
 output homeServiceApiName string = homeApiModule.outputs.apiName
+
+// Device Service (Task 3)
+output deviceServiceFunctionAppName string = deviceFunctionAppModule.outputs.functionAppName
+output deviceServiceFunctionAppDefaultHostName string = deviceFunctionAppModule.outputs.functionAppDefaultHostName
+output deviceServiceApiName string = deviceApiModule.outputs.apiName
