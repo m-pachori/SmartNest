@@ -61,6 +61,9 @@ param logAnalyticsWorkspaceName string = '${projectName}-logs-${environment}'
 @description('API Management instance name')
 param apimName string = '${projectName}-apim-${environment}'
 
+@description('Whether to deploy API Management and register service APIs with it. Disabled by default - APIM is currently not used (calling Function Apps directly / via function keys for now); the apim.bicep/apim-api.bicep modules and JWT policy are kept as-is for later re-enablement, just not deployed while this is false.')
+param deployApim bool = false
+
 @description('APIM publisher email')
 param apimPublisherEmail string
 
@@ -156,8 +159,11 @@ module storageModule 'modules/storage.bicep' = {
 // ------------------------------------------------------------------
 // Module: API Management (Developer tier)
 // Fix M1: appInsightsResourceId now passed (was appInsightsConnectionString)
+// Disabled by default (tech debt) - see deployApim param above. The
+// module itself is left untouched so it can be re-enabled later by
+// simply setting deployApim to true.
 // ------------------------------------------------------------------
-module apimModule 'modules/apim.bicep' = {
+module apimModule 'modules/apim.bicep' = if (deployApim) {
   name: 'deploy-apim'
   params: {
     location: location
@@ -200,7 +206,7 @@ module keyVaultModule 'modules/key-vault.bicep' = {
   params: {
     location: location
     keyVaultName: keyVaultName
-    apimPrincipalId: apimModule.outputs.apimManagedIdentityPrincipalId
+    apimPrincipalId: deployApim ? apimModule.outputs.apimManagedIdentityPrincipalId : ''
     cosmosPrimaryKey: cosmosModule.outputs.cosmosPrimaryKey
     storageConnectionString: storageModule.outputs.storageConnectionString
     serviceBusFunctionsConnectionString: serviceBusModule.outputs.functionsConnectionString
@@ -223,7 +229,7 @@ module homeFunctionAppModule 'modules/function-app.bicep' = {
     serviceName: 'home'
     functionAppName: homeServiceFunctionAppName
     hostingPlanName: homeServiceHostingPlanName
-    storageConnectionStringSecretUri: keyVaultModule.outputs.storageConnectionStringSecretUri
+    storageConnectionString: storageModule.outputs.storageConnectionString
     cosmosEndpoint: cosmosModule.outputs.cosmosEndpoint
     cosmosDatabaseName: cosmosDatabaseName
     cosmosPrimaryKeySecretUri: keyVaultModule.outputs.cosmosPrimaryKeySecretUri
@@ -261,8 +267,9 @@ resource homeFunctionAppKvRoleAssignment 'Microsoft.Authorization/roleAssignment
 // ------------------------------------------------------------------
 // Store the Home Service Function App's default host key in Key
 // Vault so APIM can reference it as a named value (see apim-api.bicep).
+// Only needed when APIM is deployed (tech debt - disabled by default).
 // ------------------------------------------------------------------
-resource homeSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource homeSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployApim) {
   parent: existingKeyVaultForRoleAssignment
   name: 'home-svc-function-key'
   properties: {
@@ -272,8 +279,9 @@ resource homeSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01'
 
 // ------------------------------------------------------------------
 // Module: Register the Home Service API in APIM (route prefix /homes)
+// Disabled by default (tech debt) - see deployApim param above.
 // ------------------------------------------------------------------
-module homeApiModule 'modules/apim-api.bicep' = {
+module homeApiModule 'modules/apim-api.bicep' = if (deployApim) {
   name: 'deploy-home-api'
   params: {
     apimServiceName: apimModule.outputs.apimServiceName
@@ -449,9 +457,9 @@ output serviceBusNamespaceName string = serviceBusModule.outputs.serviceBusNames
 output storagePrimaryBlobEndpoint string = storageModule.outputs.primaryBlobEndpoint
 output storageAccountName string = storageModule.outputs.storageAccountName
 
-// APIM
-output apimGatewayUrl string = apimModule.outputs.apimGatewayUrl
-output apimManagedIdentityPrincipalId string = apimModule.outputs.apimManagedIdentityPrincipalId
+// APIM (disabled by default - see deployApim param; empty strings when not deployed)
+output apimGatewayUrl string = deployApim ? apimModule.outputs.apimGatewayUrl : ''
+output apimManagedIdentityPrincipalId string = deployApim ? apimModule.outputs.apimManagedIdentityPrincipalId : ''
 
 // Key Vault - reference URIs for wiring into Function App settings
 output keyVaultUri string = keyVaultModule.outputs.keyVaultUri
@@ -464,9 +472,9 @@ output serviceBusAuditSvcListenSecretUri string = keyVaultModule.outputs.service
 // Home Service (Task 2)
 output homeServiceFunctionAppName string = homeFunctionAppModule.outputs.functionAppName
 output homeServiceFunctionAppDefaultHostName string = homeFunctionAppModule.outputs.functionAppDefaultHostName
-output homeServiceApiName string = homeApiModule.outputs.apiName
+output homeServiceApiName string = deployApim ? homeApiModule.outputs.apiName : ''
 
 // Device Service (Task 3)
 output deviceServiceFunctionAppName string = deviceFunctionAppModule.outputs.functionAppName
 output deviceServiceFunctionAppDefaultHostName string = deviceFunctionAppModule.outputs.functionAppDefaultHostName
-output deviceServiceApiName string = deviceApiModule.outputs.apiName
+output deviceServiceApiName string = deployApim ? deviceApiModule.outputs.apiName : ''

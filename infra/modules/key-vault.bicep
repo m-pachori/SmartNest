@@ -22,8 +22,8 @@ param location string
 @description('Key Vault name (3–24 alphanumeric and hyphens, globally unique)')
 param keyVaultName string
 
-@description('Object ID of the APIM system-assigned managed identity - granted Get/List')
-param apimPrincipalId string
+@description('Object ID of the APIM system-assigned managed identity - granted Get/List. Leave empty (default) if APIM is not deployed; the role assignment is skipped in that case.')
+param apimPrincipalId string = ''
 
 @description('Resource tags')
 param tags object = {}
@@ -85,10 +85,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 // ------------------------------------------------------------------
 // RBAC: grant APIM managed identity Key Vault Secrets User
 // (built-in role ID: 4633458b-17de-408a-b874-0445c86b69e6)
+// Only created when apimPrincipalId is supplied - APIM is currently
+// disabled (kept as tech debt, see main.bicep's deployApim toggle).
 // ------------------------------------------------------------------
 var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 
-resource apimKvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource apimKvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(apimPrincipalId)) {
   name: guid(keyVault.id, apimPrincipalId, kvSecretsUserRoleId)
   scope: keyVault
   properties: {

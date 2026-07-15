@@ -1,6 +1,6 @@
 // ============================================================
 //  SmartNest - Function App Module (generic, reusable)
-//  Consumption (Y1) plan, Linux, .NET 8 Isolated worker.
+//  Consumption (Y1) plan, Windows, .NET 8 Isolated worker.
 //  Parameterized by serviceName so Device/Identity/Automation/
 //  Alert/Audit/Summary/Media services (Tasks 3-9) can reuse this
 //  module without rework.
@@ -17,9 +17,9 @@ param functionAppName string
 @description('App Service Plan (hosting plan) name')
 param hostingPlanName string
 
-@description('Key Vault secret URI for the storage account connection string (AzureWebJobsStorage)')
+@description('Storage account connection string (AzureWebJobsStorage / WEBSITE_CONTENTAZUREFILECONNECTIONSTRING) - must be the plain value, not a Key Vault reference: Azure needs it at Function App provisioning time to create the content share, before the site exists and can resolve Key Vault references (Key Vault references are only supported for settings read by app code after startup)')
 @secure()
-param storageConnectionStringSecretUri string
+param storageConnectionString string
 
 @description('Cosmos DB endpoint (non-secret)')
 param cosmosEndpoint string
@@ -46,8 +46,8 @@ param additionalAppSettings object = {}
 param tags object = {}
 
 var baseAppSettings = {
-  AzureWebJobsStorage: '@Microsoft.KeyVault(SecretUri=${storageConnectionStringSecretUri})'
-  WEBSITE_CONTENTAZUREFILECONNECTIONSTRING: '@Microsoft.KeyVault(SecretUri=${storageConnectionStringSecretUri})'
+  AzureWebJobsStorage: storageConnectionString
+  WEBSITE_CONTENTAZUREFILECONNECTIONSTRING: storageConnectionString
   WEBSITE_CONTENTSHARE: toLower(functionAppName)
   FUNCTIONS_EXTENSION_VERSION: '~4'
   FUNCTIONS_WORKER_RUNTIME: 'dotnet-isolated'
@@ -62,7 +62,13 @@ var mergedAppSettings = union(baseAppSettings, additionalAppSettings)
 var functionAppTags = union(tags, { service: serviceName })
 
 // ------------------------------------------------------------------
-// Hosting Plan - Consumption (Y1), Linux
+// Hosting Plan - Consumption (Y1), Windows
+// Fix: Linux Consumption plans are backed by a VM scale set and are
+// gated by a regional VM-family quota (some subscriptions default to
+// 0 for this until a quota increase is requested - see
+// https://aka.ms/arm-deployment-operations). Windows Consumption is
+// fully multi-tenant and does not hit this gate, while remaining in
+// the same free tier (1M executions/month regardless of OS).
 // ------------------------------------------------------------------
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: hostingPlanName
@@ -74,18 +80,18 @@ resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   }
   kind: 'functionapp'
   properties: {
-    reserved: true // Linux
+    reserved: false // Windows
   }
 }
 
 // ------------------------------------------------------------------
-// Function App - .NET 8 Isolated, Linux Consumption
+// Function App - .NET 8 Isolated, Windows Consumption
 // ------------------------------------------------------------------
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
   location: location
   tags: functionAppTags
-  kind: 'functionapp,linux'
+  kind: 'functionapp'
   identity: {
     type: 'SystemAssigned'
   }
@@ -93,7 +99,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: hostingPlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'DOTNET-ISOLATED|8.0'
+      netFrameworkVersion: 'v8.0'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       appSettings: [for key in items(mergedAppSettings): {
