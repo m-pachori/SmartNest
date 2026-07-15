@@ -17,9 +17,9 @@ param functionAppName string
 @description('App Service Plan (hosting plan) name')
 param hostingPlanName string
 
-@description('Key Vault secret URI for the storage account connection string (AzureWebJobsStorage)')
+@description('Storage account connection string (AzureWebJobsStorage / WEBSITE_CONTENTAZUREFILECONNECTIONSTRING) - must be the plain value, not a Key Vault reference: Azure needs it at Function App provisioning time to create the content share, before the site exists and can resolve Key Vault references (Key Vault references are only supported for settings read by app code after startup)')
 @secure()
-param storageConnectionStringSecretUri string
+param storageConnectionString string
 
 @description('Cosmos DB endpoint (non-secret)')
 param cosmosEndpoint string
@@ -46,8 +46,8 @@ param additionalAppSettings object = {}
 param tags object = {}
 
 var baseAppSettings = {
-  AzureWebJobsStorage: '@Microsoft.KeyVault(SecretUri=${storageConnectionStringSecretUri})'
-  WEBSITE_CONTENTAZUREFILECONNECTIONSTRING: '@Microsoft.KeyVault(SecretUri=${storageConnectionStringSecretUri})'
+  AzureWebJobsStorage: storageConnectionString
+  WEBSITE_CONTENTAZUREFILECONNECTIONSTRING: storageConnectionString
   WEBSITE_CONTENTSHARE: toLower(functionAppName)
   FUNCTIONS_EXTENSION_VERSION: '~4'
   FUNCTIONS_WORKER_RUNTIME: 'dotnet-isolated'
