@@ -145,7 +145,7 @@ stages:
                   displayName: 'Deploy Home Service Function App — dev'
                   inputs:
                     azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
+                    appType: functionApp
                     appName: 'smartnest-home-svc-dev'
                     package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
 
@@ -174,7 +174,7 @@ stages:
                   displayName: 'Deploy Home Service Function App — staging'
                   inputs:
                     azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
+                    appType: functionApp
                     appName: 'smartnest-home-svc-staging'
                     package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
 
@@ -203,6 +203,6 @@ stages:
                   displayName: 'Deploy Home Service Function App — prod'
                   inputs:
                     azureSubscription: $(azureServiceConnection)
-                    appType: functionAppLinux
+                    appType: functionApp
                     appName: 'smartnest-home-svc-prod'
                     package: '$(Pipeline.Workspace)/home-service-package/home-service.zip'
