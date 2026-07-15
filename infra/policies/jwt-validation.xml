@@ -5,7 +5,6 @@
 -->
 <policies>
   <inbound>
-    <base />
     <validate-jwt header-name="Authorization"
                   failed-validation-httpcode="401"
                   failed-validation-error-message="Unauthorized: invalid or missing JWT"
@@ -37,7 +36,7 @@
       <value>@(context.Request.Headers.GetValueOrDefault("Authorization","").AsJwt()?.Subject ?? "")</value>
     </set-header>
   </inbound>
-  <backend><base /></backend>
-  <outbound><base /></outbound>
-  <on-error><base /></on-error>
+  <backend></backend>
+  <outbound></outbound>
+  <on-error></on-error>
 </policies>

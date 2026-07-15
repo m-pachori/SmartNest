@@ -9,7 +9,8 @@ written in [Azure Bicep](https://learn.microsoft.com/en-us/azure/azure-resource-
 
 ```
 /                                       # repo root
-├── azure-pipelines.yml                 # Azure Pipelines CI/CD definition
+├── azure-pipelines-infra.yml           # Azure Pipelines CI/CD — infra (Bicep) only
+├── azure-pipelines-code.yml            # Azure Pipelines CI/CD — service code build/deploy only
 │
 infra/
 ├── main.bicep                          # Top-level orchestration — deploys all modules
@@ -105,9 +106,19 @@ The script will:
 
 ## Azure Pipelines (CI/CD)
 
-The pipeline is defined in [`azure-pipelines.yml`](../azure-pipelines.yml) at the repository root.
+Infra and application code are deployed by **two separate pipelines** so infra changes and
+service code changes can be reviewed, approved, and deployed independently:
 
-### Pipeline Stages
+- [`azure-pipelines-infra.yml`](../azure-pipelines-infra.yml) — deploys `infra/main.bicep` only.
+  Triggered by changes under `infra/**`. Never touches application code.
+- [`azure-pipelines-code.yml`](../azure-pipelines-code.yml) — builds, tests, and deploys service
+  code only. Triggered by changes under `services/**`. Never runs `az deployment group create`;
+  it assumes the target Function Apps already exist (created by the infra pipeline).
+
+> Run the infra pipeline first on a fresh environment — the code pipeline deploys into
+> Function Apps that must already exist.
+
+### Infra Pipeline Stages (`azure-pipelines-infra.yml`)
 
 | Stage | Trigger | What it does |
 |-------|---------|--------------|
@@ -116,6 +127,15 @@ The pipeline is defined in [`azure-pipelines.yml`](../azure-pipelines.yml) at th
 | **Deploy Dev** | `main` branch only, automatic | Deploys to `smartnest-rg-dev` |
 | **Deploy Staging** | `main` branch, **manual approval** | Deploys to `smartnest-rg-staging` |
 | **Deploy Prod** | After staging approved, **manual approval** | Deploys to `smartnest-rg-prod` |
+
+### Code Pipeline Stages (`azure-pipelines-code.yml`)
+
+| Stage | Trigger | What it does |
+|-------|---------|--------------|
+| **BuildAndTestHomeService** | Every push / PR | `dotnet build`/`test`/`publish`, archives the Function App package |
+| **Deploy Dev** | `main` branch only, automatic | Deploys the package to the `smartnest-home-svc-dev` Function App |
+| **Deploy Staging** | `main` branch, **manual approval** | Deploys to `smartnest-home-svc-staging` |
+| **Deploy Prod** | After staging approved, **manual approval** | Deploys to `smartnest-home-svc-prod` |
 
 ### One-time Azure DevOps Setup
 
@@ -150,6 +170,11 @@ In **Project Settings → Service Connections**:
    `smartnest-rg-prod`), or assign once at the subscription scope if the same service
    connection is used for all three.
 
+   > This service connection is used by **both** pipelines. `azure-pipelines-code.yml` only
+   > needs `Contributor` (it never creates role assignments) — if you'd rather use two
+   > separate service connections for least privilege, name the code pipeline's connection
+   > differently and update the `azureServiceConnection` variable in `azure-pipelines-code.yml`.
+
 #### 2. Create the Variable Group
 
 In **Pipelines → Library → + Variable group**, name it **`smartnest-common`** and add:
@@ -172,12 +197,13 @@ In **Pipelines → Environments**, create three environments and add an **Approv
 | `smartnest-staging` | Yes |
 | `smartnest-prod` | Yes |
 
-#### 4. Register the Pipeline
+#### 4. Register the Pipelines
 
 1. Go to **Pipelines → New Pipeline → Azure Repos Git**
 2. Select your repository
 3. Choose **Existing Azure Pipelines YAML file**
-4. Path: `/azure-pipelines.yml`
+4. Path: `/azure-pipelines-infra.yml` — name it e.g. `SmartNest-Infra`
+5. Repeat: **New Pipeline** → same repo → path `/azure-pipelines-code.yml` — name it e.g. `SmartNest-Code`
 
 > **Secrets in parameters files** — `tenantId`, `apiAppClientId`, `apimPublisherEmail`, and
 > `monitorAlertEmailAddress` are intentionally omitted from the checked-in parameter files and
