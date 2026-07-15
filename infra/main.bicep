@@ -217,7 +217,7 @@ module homeFunctionAppModule 'modules/function-app.bicep' = {
     serviceName: 'home'
     functionAppName: homeServiceFunctionAppName
     hostingPlanName: homeServiceHostingPlanName
-    storageConnectionStringSecretUri: keyVaultModule.outputs.storageConnectionStringSecretUri
+    storageConnectionString: storageModule.outputs.storageConnectionString
     cosmosEndpoint: cosmosModule.outputs.cosmosEndpoint
     cosmosDatabaseName: cosmosDatabaseName
     cosmosPrimaryKeySecretUri: keyVaultModule.outputs.cosmosPrimaryKeySecretUri
