@@ -100,6 +100,12 @@ param identityServiceFunctionAppName string = '${projectName}-identity-svc-${env
 @description('Identity Service Function App hosting plan name')
 param identityServiceHostingPlanName string = '${projectName}-identity-svc-plan-${environment}'
 
+@description('Platform Service Function App name - single merged Function App hosting Automation, Alert, Audit, Summary, and Media (Tasks 5-9) instead of five separate apps/plans - see plan-platformService.prompt.md.')
+param platformServiceFunctionAppName string = '${projectName}-platform-svc-${environment}'
+
+@description('Platform Service Function App hosting plan name')
+param platformServiceHostingPlanName string = '${projectName}-platform-svc-plan-${environment}'
+
 // ------------------------------------------------------------------
 // Shared Tags - applied to every resource
 // ------------------------------------------------------------------
@@ -218,7 +224,7 @@ module keyVaultModule 'modules/key-vault.bicep' = {
     serviceBusFunctionsConnectionString: serviceBusModule.outputs.functionsConnectionString
     serviceBusDeviceSvcSendConnectionString: serviceBusModule.outputs.deviceServiceSendConnectionString
     serviceBusIdentitySvcSendConnectionString: serviceBusModule.outputs.identityServiceSendConnectionString
-    serviceBusAuditSvcListenConnectionString: serviceBusModule.outputs.auditServiceListenConnectionString
+    serviceBusPlatformSvcSendListenConnectionString: serviceBusModule.outputs.platformServiceSendListenConnectionString
     tags: commonTags
   }
   dependsOn: [ apimModule, cosmosModule, storageModule, serviceBusModule ]
@@ -391,10 +397,13 @@ resource deviceFunctionAppKvRoleAssignment 'Microsoft.Authorization/roleAssignme
 
 // ------------------------------------------------------------------
 // Store the Device Service Function App's default host key in Key
-// Vault so APIM can reference it as a named value (see apim-api.bicep).
-// Only needed when APIM is deployed (tech debt - disabled by default).
+// Vault. Always created (not gated by deployApim) - APIM can reference
+// it as a named value when enabled, and the Platform Service Function
+// App (Tasks 5-9) always needs it for Automation's in-process calls to
+// Device Service's PATCH /devices/{id}/state endpoint (see
+// plan-platformService.prompt.md Decisions).
 // ------------------------------------------------------------------
-resource deviceSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployApim) {
+resource deviceSvcFunctionKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: existingKeyVaultForRoleAssignment
   name: 'device-svc-function-key'
   properties: {
@@ -552,6 +561,65 @@ module identityApiModule 'modules/apim-api.bicep' = if (deployApim) {
 }
 
 // ------------------------------------------------------------------
+// Module: Platform Service Function App (Tasks 5-9)
+// Single merged Function App + hosting plan running Automation, Alert,
+// Audit (event store), Summary, and Media instead of five separate
+// Function Apps/plans - see plan-platformService.prompt.md. Reuses the
+// shared platform storage account, Cosmos DB (rules/alerts/audit-log/
+// summaries/media-metadata containers, already provisioned in Task 1),
+// App Insights, and the combined Listen+Send PlatformServiceSendListen
+// Service Bus connection string (this app both consumes the automation/
+// alert/audit subscriptions and publishes AutomationExecuted/AlertRaised/
+// SummaryGenerated/DocumentProcessed).
+// ------------------------------------------------------------------
+module platformFunctionAppModule 'modules/function-app.bicep' = {
+  name: 'deploy-platform-function-app'
+  params: {
+    location: location
+    serviceName: 'platform'
+    functionAppName: platformServiceFunctionAppName
+    hostingPlanName: platformServiceHostingPlanName
+    storageConnectionString: storageModule.outputs.storageConnectionString
+    cosmosEndpoint: cosmosModule.outputs.cosmosEndpoint
+    cosmosDatabaseName: cosmosDatabaseName
+    cosmosPrimaryKeySecretUri: keyVaultModule.outputs.cosmosPrimaryKeySecretUri
+    serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusPlatformSvcSendListenSecretUri
+    appInsightsConnectionString: appInsightsModule.outputs.connectionString
+    additionalAppSettings: {
+      'Cosmos:HomesContainerName': 'homes'
+      'Cosmos:DevicesContainerName': 'devices'
+      'Cosmos:RulesContainerName': 'rules'
+      'Cosmos:AlertsContainerName': 'alerts'
+      'Cosmos:AuditLogContainerName': 'audit-log'
+      'Cosmos:SummariesContainerName': 'summaries'
+      'Cosmos:MediaMetadataContainerName': 'media-metadata'
+      'Storage:MediaUploadsContainerName': 'media-uploads'
+      'Storage:ProcessedMediaContainerName': 'processed-media'
+      // Automation's "ChangeDeviceState" rule action calls Device Service's
+      // HTTP endpoint directly - internal service-to-service call, not APIM.
+      'DeviceService:BaseUrl': 'https://${deviceFunctionAppModule.outputs.functionAppDefaultHostName}/api'
+      'DeviceService:FunctionKey': '@Microsoft.KeyVault(SecretUri=${deviceSvcFunctionKeySecret.properties.secretUri})'
+    }
+    tags: commonTags
+  }
+}
+
+// ------------------------------------------------------------------
+// Grant the Platform Service Function App's managed identity access to
+// read secrets from Key Vault (required — Key Vault uses RBAC, not
+// access policies; see infra/modules/key-vault.bicep).
+// ------------------------------------------------------------------
+resource platformFunctionAppKvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(existingKeyVaultForRoleAssignment.id, platformServiceFunctionAppName, kvSecretsUserRoleId)
+  scope: existingKeyVaultForRoleAssignment
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalId: platformFunctionAppModule.outputs.functionAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ------------------------------------------------------------------
 // Outputs - consumed by CI/CD pipelines and developer scripts
 // Fix C1: no secret values are output here. Use Key Vault secret URIs
 //          to wire Function App settings via Key Vault references.
@@ -585,7 +653,7 @@ output storageConnectionStringSecretUri string = keyVaultModule.outputs.storageC
 output serviceBusFunctionsSecretUri string = keyVaultModule.outputs.serviceBusFunctionsSecretUri
 output serviceBusDeviceSvcSendSecretUri string = keyVaultModule.outputs.serviceBusDeviceSvcSendSecretUri
 output serviceBusIdentitySvcSendSecretUri string = keyVaultModule.outputs.serviceBusIdentitySvcSendSecretUri
-output serviceBusAuditSvcListenSecretUri string = keyVaultModule.outputs.serviceBusAuditSvcListenSecretUri
+output serviceBusPlatformSvcSendListenSecretUri string = keyVaultModule.outputs.serviceBusPlatformSvcSendListenSecretUri
 
 // Home Service (Task 2)
 output homeServiceFunctionAppName string = homeFunctionAppModule.outputs.functionAppName
@@ -601,3 +669,7 @@ output deviceServiceApiName string = deployApim ? deviceApiModule.outputs.apiNam
 output identityServiceFunctionAppName string = identityFunctionAppModule.outputs.functionAppName
 output identityServiceFunctionAppDefaultHostName string = identityFunctionAppModule.outputs.functionAppDefaultHostName
 output identityServiceApiName string = deployApim ? identityApiModule.outputs.apiName : ''
+
+// Platform Service (Tasks 5-9: Automation, Alert, Audit, Summary, Media)
+output platformServiceFunctionAppName string = platformFunctionAppModule.outputs.functionAppName
+output platformServiceFunctionAppDefaultHostName string = platformFunctionAppModule.outputs.functionAppDefaultHostName

@@ -64,6 +64,8 @@ variables:
     value: services/device-service/SmartNest.DeviceService/SmartNest.DeviceService.csproj
   - name: identityServiceProject
     value: services/identity-service/SmartNest.IdentityService/SmartNest.IdentityService.csproj
+  - name: platformServiceProject
+    value: services/platform-service/SmartNest.PlatformService/SmartNest.PlatformService.csproj
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 1 — Build & Test (runs on every push / PR)
@@ -162,6 +164,25 @@ stages:
             artifact: identity-service-package
             displayName: 'Publish Identity Service package artifact'
 
+          - script: |
+              dotnet publish $(platformServiceProject) \
+                --configuration Release --no-build \
+                --output $(Build.ArtifactStagingDirectory)/platform-service
+            displayName: 'dotnet publish Platform Service'
+
+          - task: ArchiveFiles@2
+            displayName: 'Archive Platform Service publish output'
+            inputs:
+              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/platform-service'
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: '$(Build.ArtifactStagingDirectory)/platform-service.zip'
+              replaceExistingArchive: true
+
+          - publish: $(Build.ArtifactStagingDirectory)/platform-service.zip
+            artifact: platform-service-package
+            displayName: 'Publish Platform Service package artifact'
+
 # ─────────────────────────────────────────────────────────────
 # STAGE 2 — Deploy Dev  (main branch only, auto)
 # ─────────────────────────────────────────────────────────────
@@ -214,6 +235,18 @@ stages:
                     appType: functionApp
                     appName: 'smartnest-identity-svc-dev'
                     package: '$(Pipeline.Workspace)/identity-service-package/identity-service.zip'
+
+                - download: current
+                  artifact: platform-service-package
+                  displayName: 'Download Platform Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Platform Service Function App — dev'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionApp
+                    appName: 'smartnest-platform-svc-dev'
+                    package: '$(Pipeline.Workspace)/platform-service-package/platform-service.zip'
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 3 — Deploy Staging  (manual approval gate)
@@ -268,6 +301,18 @@ stages:
                     appName: 'smartnest-identity-svc-staging'
                     package: '$(Pipeline.Workspace)/identity-service-package/identity-service.zip'
 
+                - download: current
+                  artifact: platform-service-package
+                  displayName: 'Download Platform Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Platform Service Function App — staging'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionApp
+                    appName: 'smartnest-platform-svc-staging'
+                    package: '$(Pipeline.Workspace)/platform-service-package/platform-service.zip'
+
 # ─────────────────────────────────────────────────────────────
 # STAGE 4 — Deploy Prod  (manual approval gate)
 # ─────────────────────────────────────────────────────────────
@@ -320,3 +365,15 @@ stages:
                     appType: functionApp
                     appName: 'smartnest-identity-svc-prod'
                     package: '$(Pipeline.Workspace)/identity-service-package/identity-service.zip'
+
+                - download: current
+                  artifact: platform-service-package
+                  displayName: 'Download Platform Service package'
+
+                - task: AzureFunctionApp@2
+                  displayName: 'Deploy Platform Service Function App — prod'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: functionApp
+                    appName: 'smartnest-platform-svc-prod'
+                    package: '$(Pipeline.Workspace)/platform-service-package/platform-service.zip'

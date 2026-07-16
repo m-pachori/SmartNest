@@ -2,8 +2,8 @@
 //  SmartNest - Service Bus Module
 //  Standard tier (required for topics).
 //  Topics:  device-events, home-events, user-events
-//  Queue:   media-processing (replaced by blob trigger per plan,
-//           retained for optional future use)
+//  Queue:   media-processing removed - Task 9 (Media Service) uses a
+//           Blob trigger as its sole processing path instead.
 //
 //  Fix H3: all API versions changed from 2022-10-01-preview to
 //           stable GA 2021-11-01.
@@ -160,26 +160,6 @@ resource userEventsAuditSub 'Microsoft.ServiceBus/namespaces/topics/subscription
 }
 
 // ------------------------------------------------------------------
-// Queues
-// ------------------------------------------------------------------
-resource mediaProcessingQueue 'Microsoft.ServiceBus/namespaces/queues@2021-11-01' = {
-  parent: serviceBusNamespace
-  name: 'media-processing'
-  properties: {
-    defaultMessageTimeToLive: 'P1D'
-    maxSizeInMegabytes: 1024
-    requiresDuplicateDetection: false
-    requiresSession: false
-    deadLetteringOnMessageExpiration: true
-    lockDuration: 'PT2M'
-    maxDeliveryCount: 5
-    enableBatchedOperations: true
-    enablePartitioning: false
-    status: 'Active'
-  }
-}
-
-// ------------------------------------------------------------------
 // Shared access policies (least-privilege per service)
 // ------------------------------------------------------------------
 resource deviceServiceSendRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
@@ -198,11 +178,17 @@ resource identityServiceSendRule 'Microsoft.ServiceBus/namespaces/authorizationR
   }
 }
 
-resource auditServiceListenRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
+// PlatformServiceSendListen: used by the merged Automation/Alert/Audit/
+// Summary/Media Function App (Tasks 5-9 - see plan-platformService.prompt.md).
+// Needs both rights since it consumes device-events/home-events/user-events
+// subscriptions (Automation/Alert/Audit) AND publishes AutomationExecuted/
+// AlertRaised/SummaryGenerated/DocumentProcessed - unlike Device/Identity
+// Service, which only ever publish.
+resource platformServiceSendListenRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2021-11-01' = {
   parent: serviceBusNamespace
-  name: 'AuditServiceListen'
+  name: 'PlatformServiceSendListen'
   properties: {
-    rights: [ 'Listen' ]
+    rights: [ 'Listen', 'Send' ]
   }
 }
 
@@ -235,6 +221,6 @@ output deviceServiceSendConnectionString string = deviceServiceSendRule.listKeys
 @secure()
 output identityServiceSendConnectionString string = identityServiceSendRule.listKeys().primaryConnectionString
 
-@description('AuditService listen-only connection string - passed directly to Key Vault. Never log.')
+@description('PlatformService (Tasks 5-9) Listen+Send connection string - passed directly to Key Vault. Never log.')
 @secure()
-output auditServiceListenConnectionString string = auditServiceListenRule.listKeys().primaryConnectionString
+output platformServiceSendListenConnectionString string = platformServiceSendListenRule.listKeys().primaryConnectionString
