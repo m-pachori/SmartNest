@@ -47,6 +47,13 @@ public sealed class EvaluateRulesHandler
             return;
 
         var payload = envelope.Payload;
+        // System.Text.Json deserialization bypasses EventEnvelope<T>.Create()'s null check,
+        // so a malformed/incomplete message body (e.g. a missing "payload" property) can
+        // still produce a null Payload here - guard explicitly rather than letting a
+        // NullReferenceException poison redelivery of this message.
+        if (payload is null || string.IsNullOrWhiteSpace(payload.HomeId) || string.IsNullOrWhiteSpace(payload.DeviceId))
+            return;
+
         var rules = await _ruleRepository.GetEnabledByHomeIdAsync(payload.HomeId, cancellationToken).ConfigureAwait(false);
 
         foreach (var rule in rules)

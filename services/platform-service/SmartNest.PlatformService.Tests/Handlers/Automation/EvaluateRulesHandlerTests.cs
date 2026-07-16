@@ -33,6 +33,41 @@ public class EvaluateRulesHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_DoesNothing_WhenPayloadIsNull()
+    {
+        var message = """
+        {
+            "eventId": "evt-1",
+            "eventType": "DeviceStateChanged",
+            "aggregateId": "device-1",
+            "aggregateType": "Device",
+            "occurredAt": "2026-07-16T00:00:00Z",
+            "actorId": "user-1",
+            "homeId": "home-1",
+            "correlationId": "corr-1",
+            "payload": null
+        }
+        """;
+
+        var ruleRepository = new Mock<IRuleRepository>();
+        var deviceStateClient = new Mock<IDeviceStateClient>();
+        var eventPublisher = new Mock<IEventPublisher>();
+        var alertRepository = new Mock<IAlertRepository>();
+        var notificationSender = new Mock<INotificationSender>();
+        var createAlertHandler = new CreateAlertHandler(alertRepository.Object, notificationSender.Object, new AlertEventPublisher(eventPublisher.Object));
+        var handler = new EvaluateRulesHandler(
+            ruleRepository.Object,
+            deviceStateClient.Object,
+            createAlertHandler,
+            new AutomationEventPublisher(eventPublisher.Object));
+
+        var act = () => handler.HandleAsync(message);
+
+        await act.Should().NotThrowAsync();
+        ruleRepository.Verify(r => r.GetEnabledByHomeIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task HandleAsync_CallsDeviceStateClient_WhenChangeDeviceStateRuleMatches()
     {
         var rule = Rule.Create("home-1", "device-1", "Cool Down", new Condition("temperature", ConditionOperator.GreaterThan, "30"),

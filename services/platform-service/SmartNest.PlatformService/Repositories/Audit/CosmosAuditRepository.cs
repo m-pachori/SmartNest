@@ -61,6 +61,21 @@ internal sealed class CosmosAuditRepository : IAuditRepository
             if (response.IsSuccessStatusCode)
                 return nextSequence;
 
+            // The entry-create operation is always index 1 (counter op is index 0). When a
+            // batch fails, Cosmos reports the operation that actually caused the failure
+            // with its real status code, and every other operation in the batch as 424
+            // Failed Dependency (the whole transaction rolled back). So checking index 1
+            // specifically distinguishes a genuine duplicate append (Service Bus redelivered
+            // a message whose eventId/id was already written - safe, idempotent no-op) from
+            // the counter op (index 0) failing due to a concurrent writer (needs a retry).
+            if (response[1].StatusCode == HttpStatusCode.Conflict)
+            {
+                var existingSequence = await ReadExistingSequenceNumberAsync(entry.Id, partitionKey, cancellationToken).ConfigureAwait(false);
+                if (existingSequence is not null)
+                    return existingSequence.Value;
+                // Couldn't read it back (shouldn't normally happen) - fall through to retry.
+            }
+
             // Counter created/updated concurrently by another append - retry with a fresh read.
             if (response.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed)
                 continue;
@@ -135,6 +150,26 @@ internal sealed class CosmosAuditRepository : IAuditRepository
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Reads back the sequence number of an already-appended entry, used when
+    /// <see cref="AppendAsync"/> detects a genuine duplicate (redelivered message) rather
+    /// than a concurrent counter conflict.
+    /// </summary>
+    private async Task<int?> ReadExistingSequenceNumberAsync(string entryId, PartitionKey partitionKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _container
+                .ReadItemAsync<AuditEntryDocument>(entryId, partitionKey, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            return response.Resource.SequenceNumber;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
     }
 
     private async Task<(int lastSequence, string? etag)> ReadCounterAsync(string aggregateId, PartitionKey partitionKey, CancellationToken cancellationToken)

@@ -31,7 +31,7 @@ public sealed class UploadMedia
         try
         {
             var result = await _handler
-                .HandleAsync(deviceId, contentType, req.ContentLength ?? 0, req.Body, cancellationToken)
+                .HandleAsync(deviceId, contentType, req.ContentLength, req.Body, cancellationToken)
                 .ConfigureAwait(false);
 
             return new ObjectResult(result) { StatusCode = StatusCodes.Status202Accepted };
@@ -39,6 +39,10 @@ public sealed class UploadMedia
         catch (UploadMediaHandler.PayloadTooLargeException ex)
         {
             return new ObjectResult(new { error = ex.Message }) { StatusCode = StatusCodes.Status413PayloadTooLarge };
+        }
+        catch (UploadMediaHandler.LengthRequiredException ex)
+        {
+            return new ObjectResult(new { error = ex.Message }) { StatusCode = StatusCodes.Status411LengthRequired };
         }
         catch (ArgumentException ex)
         {

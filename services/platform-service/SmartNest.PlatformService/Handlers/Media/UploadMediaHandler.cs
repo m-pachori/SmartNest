@@ -40,17 +40,40 @@ public sealed class UploadMediaHandler
         }
     }
 
+    /// <summary>Thrown by the caller (HTTP Function) as 411 when the request has no (or a non-positive) Content-Length.</summary>
+    public sealed class LengthRequiredException : Exception
+    {
+        public LengthRequiredException(string message) : base(message)
+        {
+        }
+    }
+
     public async Task<UploadMediaResponse> HandleAsync(
         string deviceId,
         string contentType,
-        long contentLength,
+        long? contentLength,
         Stream content,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
             throw new ArgumentException("DeviceId is required.", nameof(deviceId));
-        if (string.IsNullOrWhiteSpace(contentType) || !AllowedContentTypes.TryGetValue(contentType, out var extension))
+        // deviceId becomes the first blob path segment ("{deviceId}/{guid}.{ext}") - a
+        // '/' would let the caller write into another device's virtual folder and would
+        // break ProcessMediaHandler's blobName.Split('/', 2) parsing.
+        if (deviceId.Contains('/'))
+            throw new ArgumentException("DeviceId must not contain '/'.", nameof(deviceId));
+
+        // Compare only the media-type token, ignoring MIME parameters (e.g.
+        // "image/jpeg; charset=binary") which some clients append and which would
+        // otherwise cause an exact-match lookup to incorrectly reject a valid upload.
+        var mediaType = contentType?.Split(';', 2)[0].Trim() ?? string.Empty;
+        if (mediaType.Length == 0 || !AllowedContentTypes.TryGetValue(mediaType, out var extension))
             throw new ArgumentException($"Unsupported Content-Type '{contentType}'. Allowed: {string.Join(", ", AllowedContentTypes.Keys)}.");
+
+        // A missing Content-Length (e.g. chunked transfer-encoding) must not silently
+        // bypass the size limit - reject explicitly rather than defaulting to 0.
+        if (contentLength is null || contentLength <= 0)
+            throw new LengthRequiredException("A positive Content-Length header is required for media uploads.");
         if (contentLength > MaxSizeBytes)
             throw new PayloadTooLargeException($"Upload size {contentLength} bytes exceeds the {MaxSizeBytes}-byte limit.");
         ArgumentNullException.ThrowIfNull(content);
@@ -61,6 +84,6 @@ public sealed class UploadMediaHandler
 
         await blobClient.UploadAsync(content, overwrite: true, cancellationToken).ConfigureAwait(false);
 
-        return new UploadMediaResponse(blobName, contentType, contentLength);
+        return new UploadMediaResponse(blobName, mediaType, contentLength.Value);
     }
 }

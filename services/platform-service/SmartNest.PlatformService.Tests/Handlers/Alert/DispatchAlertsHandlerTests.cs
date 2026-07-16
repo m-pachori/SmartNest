@@ -28,6 +28,35 @@ public class DispatchAlertsHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_DoesNothing_WhenPayloadIsNull()
+    {
+        var message = """
+        {
+            "eventId": "evt-1",
+            "eventType": "DeviceStateChanged",
+            "aggregateId": "device-1",
+            "aggregateType": "Device",
+            "occurredAt": "2026-07-16T00:00:00Z",
+            "actorId": "user-1",
+            "homeId": "home-1",
+            "correlationId": "corr-1",
+            "payload": null
+        }
+        """;
+
+        var alertRepository = new Mock<IAlertRepository>();
+        var notificationSender = new Mock<INotificationSender>();
+        var eventPublisher = new Mock<IEventPublisher>();
+        var createAlertHandler = new CreateAlertHandler(alertRepository.Object, notificationSender.Object, new AlertEventPublisher(eventPublisher.Object));
+        var handler = new DispatchAlertsHandler(createAlertHandler);
+
+        var act = () => handler.HandleAsync(message);
+
+        await act.Should().NotThrowAsync();
+        alertRepository.Verify(r => r.CreateAsync(It.IsAny<SmartNest.PlatformService.Domain.Alert.Alert>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task HandleAsync_RaisesAlert_WhenTemperatureExceedsThreshold()
     {
         var alertRepository = new Mock<IAlertRepository>();

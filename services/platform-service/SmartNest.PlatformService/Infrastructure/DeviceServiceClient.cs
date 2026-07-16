@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -7,8 +8,8 @@ namespace SmartNest.PlatformService.Infrastructure;
 /// <see cref="IDeviceStateClient"/> implementation - PATCHes Device Service's
 /// <c>/devices/{id}/state</c> endpoint using its function key (stored in Key Vault,
 /// wired via the <c>DeviceService:FunctionKey</c> app setting - see infra/main.bicep).
-/// Always sends a Numeric state value shape since rule actions target numeric/text
-/// thresholds; extend if boolean device actions are needed later.
+/// Infers the Boolean/Numeric/Text wire shape from the rule action's plain string
+/// value (the domain model doesn't carry a value-type hint) - see <see cref="BuildValue"/>.
 /// </summary>
 public sealed class DeviceServiceClient : IDeviceStateClient
 {
@@ -40,11 +41,7 @@ public sealed class DeviceServiceClient : IDeviceStateClient
         var body = new
         {
             Property = property,
-            Value = new
-            {
-                Type = "Text",
-                StringValue = value,
-            },
+            Value = BuildValue(value),
         };
 
         var requestUri = $"{_baseUrl}/devices/{Uri.EscapeDataString(deviceId)}/state?code={Uri.EscapeDataString(_functionKey)}";
@@ -52,5 +49,30 @@ public sealed class DeviceServiceClient : IDeviceStateClient
 
         using var response = await _httpClient.PatchAsync(requestUri, content, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Infers the state value's wire shape by attempting Boolean, then Numeric, falling
+    /// back to Text. The <c>Type</c> field is sent as its numeric ordinal (0/1/2) rather
+    /// than a string name, since Device Service deserializes it with a plain
+    /// <c>System.Text.Json</c> enum converter (no <c>JsonStringEnumConverter</c>
+    /// registered) - see SmartNest.DeviceService.Domain.ValueObjects.StateValueType
+    /// (<c>Boolean = 0, Numeric = 1, Text = 2</c>). The ordinal is mirrored locally here
+    /// rather than referencing that project directly, since Device Service and Platform
+    /// Service are independently deployed Function Apps.
+    /// </summary>
+    private static object BuildValue(string value)
+    {
+        const int boolType = 0;
+        const int numericType = 1;
+        const int textType = 2;
+
+        if (bool.TryParse(value, out var boolValue))
+            return new { Type = boolType, BoolValue = boolValue, NumericValue = (double?)null, StringValue = (string?)null, Unit = (string?)null };
+
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numericValue))
+            return new { Type = numericType, BoolValue = (bool?)null, NumericValue = numericValue, StringValue = (string?)null, Unit = (string?)null };
+
+        return new { Type = textType, BoolValue = (bool?)null, NumericValue = (double?)null, StringValue = value, Unit = (string?)null };
     }
 }

@@ -39,6 +39,16 @@ public sealed record RuleAction(
             throw new ArgumentException("Severity is required.", nameof(severity));
         if (string.IsNullOrWhiteSpace(message))
             throw new ArgumentException("Message is required.", nameof(message));
+        // Validated eagerly here (the single choke point CreateRuleHandler/UpdateRuleHandler
+        // both funnel through via RuleActionRequest.ToDomain()) so an invalid value can
+        // never reach EvaluateRulesHandler's Enum.Parse<AlertSeverity> call, which would
+        // otherwise fail repeatedly for every future DeviceStateChanged event matching
+        // this rule until the rule is fixed or deleted.
+        if (!Enum.TryParse<Alert.ValueObjects.AlertSeverity>(severity, ignoreCase: true, out _))
+        {
+            var allowed = string.Join(", ", Enum.GetNames<Alert.ValueObjects.AlertSeverity>());
+            throw new ArgumentException($"Severity '{severity}' is not a valid alert severity. Allowed: {allowed}.", nameof(severity));
+        }
 
         return new RuleAction(RuleActionType.RaiseAlert, null, null, null, severity, message);
     }

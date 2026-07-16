@@ -29,6 +29,11 @@ public sealed class DispatchAlertsHandler
             return;
 
         var payload = envelope.Payload;
+        // Guard against a malformed/incomplete message body producing a null Payload -
+        // see EvaluateRulesHandler for the same fix and rationale.
+        if (payload is null || string.IsNullOrWhiteSpace(payload.HomeId) || string.IsNullOrWhiteSpace(payload.DeviceId))
+            return;
+
         if (!IsAlertWorthy(payload, out var severity, out var message))
             return;
 
