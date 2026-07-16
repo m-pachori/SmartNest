@@ -14,18 +14,25 @@ internal sealed class RuleDocument
     [JsonProperty("homeId")]
     public string HomeId { get; set; } = default!;
 
+    [JsonProperty("deviceId")]
     public string? DeviceId { get; set; }
 
+    [JsonProperty("name")]
     public string Name { get; set; } = default!;
 
+    [JsonProperty("condition")]
     public ConditionDocument Condition { get; set; } = default!;
 
+    [JsonProperty("action")]
     public RuleActionDocument Action { get; set; } = default!;
 
+    [JsonProperty("enabled")]
     public bool Enabled { get; set; }
 
+    [JsonProperty("createdAt")]
     public DateTimeOffset CreatedAt { get; set; }
 
+    [JsonProperty("updatedAt")]
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
