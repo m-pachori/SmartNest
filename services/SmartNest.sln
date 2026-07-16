@@ -27,6 +27,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartNest.IdentityService",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartNest.IdentityService.Tests", "identity-service\SmartNest.IdentityService.Tests\SmartNest.IdentityService.Tests.csproj", "{F6A7B8C9-6666-4F7A-9B8C-9D0E1F2A3B4C}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "platform-service", "platform-service", "{A7B8C9D0-7777-4A8B-9C0D-1E2F3A4B5C6D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartNest.PlatformService", "platform-service\SmartNest.PlatformService\SmartNest.PlatformService.csproj", "{B8C9D0E1-8888-4B9C-8D0E-1F2A3B4C5D6E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartNest.PlatformService.Tests", "platform-service\SmartNest.PlatformService.Tests\SmartNest.PlatformService.Tests.csproj", "{C9D0E1F2-9999-4C9D-9E0F-2A3B4C5D6E7F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -68,6 +74,14 @@ Global
 		{F6A7B8C9-6666-4F7A-9B8C-9D0E1F2A3B4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F6A7B8C9-6666-4F7A-9B8C-9D0E1F2A3B4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F6A7B8C9-6666-4F7A-9B8C-9D0E1F2A3B4C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8C9D0E1-8888-4B9C-8D0E-1F2A3B4C5D6E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8C9D0E1-8888-4B9C-8D0E-1F2A3B4C5D6E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8C9D0E1-8888-4B9C-8D0E-1F2A3B4C5D6E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8C9D0E1-8888-4B9C-8D0E-1F2A3B4C5D6E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C9D0E1F2-9999-4C9D-9E0F-2A3B4C5D6E7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C9D0E1F2-9999-4C9D-9E0F-2A3B4C5D6E7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C9D0E1F2-9999-4C9D-9E0F-2A3B4C5D6E7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C9D0E1F2-9999-4C9D-9E0F-2A3B4C5D6E7F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F587D2F7-6D79-4C78-B697-96E9E15C71E5} = {55435946-338C-47F1-B0F5-4AFDF047E3CC}
@@ -78,5 +92,7 @@ Global
 		{C3D4E5F6-3333-4C4D-9E5F-6A7B8C9D0E1F} = {A1B2C3D4-1111-4A2B-9C3D-4E5F6A7B8C9D}
 		{E5F6A7B8-5555-4E6F-8A7B-8C9D0E1F2A3B} = {D4E5F6A7-4444-4D5E-9F6A-7B8C9D0E1F2A}
 		{F6A7B8C9-6666-4F7A-9B8C-9D0E1F2A3B4C} = {D4E5F6A7-4444-4D5E-9F6A-7B8C9D0E1F2A}
+		{B8C9D0E1-8888-4B9C-8D0E-1F2A3B4C5D6E} = {A7B8C9D0-7777-4A8B-9C0D-1E2F3A4B5C6D}
+		{C9D0E1F2-9999-4C9D-9E0F-2A3B4C5D6E7F} = {A7B8C9D0-7777-4A8B-9C0D-1E2F3A4B5C6D}
 	EndGlobalSection
 EndGlobal

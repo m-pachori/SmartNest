@@ -8,7 +8,7 @@
 //    storage-connection-string
 //    servicebus-functions-connection-string
 //    servicebus-devicesvc-send-connection-string
-//    servicebus-auditsvc-listen-connection-string
+//    servicebus-platformsvc-sendlisten-connection-string
 //
 //  Access model:
 //    - APIM managed identity gets Get/List on secrets
@@ -57,9 +57,9 @@ param serviceBusDeviceSvcSendConnectionString string
 @secure()
 param serviceBusIdentitySvcSendConnectionString string
 
-@description('Service Bus AuditService listen-only connection string')
+@description('Service Bus PlatformService (Tasks 5-9 - Automation/Alert/Audit/Summary/Media) Listen+Send connection string')
 @secure()
-param serviceBusAuditSvcListenConnectionString string
+param serviceBusPlatformSvcSendListenConnectionString string
 
 // ------------------------------------------------------------------
 // Key Vault - Standard tier, soft-delete enabled, purge protection on
@@ -152,11 +152,11 @@ resource secretSbIdentitySvc 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   }
 }
 
-resource secretSbAuditSvc 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource secretSbPlatformSvc 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
-  name: 'servicebus-auditsvc-listen-connection-string'
+  name: 'servicebus-platformsvc-sendlisten-connection-string'
   properties: {
-    value: serviceBusAuditSvcListenConnectionString
+    value: serviceBusPlatformSvcSendListenConnectionString
     attributes: { enabled: true }
   }
 }
@@ -173,4 +173,4 @@ output storageConnectionStringSecretUri string = secretStorageConnectionString.p
 output serviceBusFunctionsSecretUri string = secretSbFunctions.properties.secretUri
 output serviceBusDeviceSvcSendSecretUri string = secretSbDeviceSvc.properties.secretUri
 output serviceBusIdentitySvcSendSecretUri string = secretSbIdentitySvc.properties.secretUri
-output serviceBusAuditSvcListenSecretUri string = secretSbAuditSvc.properties.secretUri
+output serviceBusPlatformSvcSendListenSecretUri string = secretSbPlatformSvc.properties.secretUri
