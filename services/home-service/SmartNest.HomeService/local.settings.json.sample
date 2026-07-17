@@ -4,6 +4,8 @@
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
         "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
+        "Auth:TenantId": "<azure-ad-tenant-id>",
+        "Auth:Audience": "api://<api-app-client-id>",
         "Cosmos:Endpoint": "https://localhost:8081/",
         "Cosmos:Key": "<cosmos-db-emulator-or-dev-account-primary-key>",
         "Cosmos:DatabaseName": "smartnest-db",

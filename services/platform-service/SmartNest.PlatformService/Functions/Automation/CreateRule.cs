@@ -3,16 +3,19 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using SmartNest.PlatformService.Dtos.Automation;
 using SmartNest.PlatformService.Handlers.Automation;
+using SmartNest.Shared.Security;
 
 namespace SmartNest.PlatformService.Functions.Automation;
 
 public sealed class CreateRule
 {
     private readonly CreateRuleHandler _handler;
+    private readonly IJwtValidator _jwtValidator;
 
-    public CreateRule(CreateRuleHandler handler)
+    public CreateRule(CreateRuleHandler handler, IJwtValidator jwtValidator)
     {
         _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        _jwtValidator = jwtValidator ?? throw new ArgumentNullException(nameof(jwtValidator));
     }
 
     [Function("CreateRule")]
@@ -22,7 +25,7 @@ public sealed class CreateRule
         CancellationToken cancellationToken) =>
         HttpFunctionHelpers.ExecuteAsync(async () =>
         {
-            var user = HttpFunctionHelpers.GetCurrentUser(req);
+            var user = await HttpFunctionHelpers.GetCurrentUserAsync(req, _jwtValidator, cancellationToken).ConfigureAwait(false);
             var request = await HttpFunctionHelpers.ReadRequiredJsonAsync<CreateRuleRequest>(req, cancellationToken)
                 .ConfigureAwait(false);
 

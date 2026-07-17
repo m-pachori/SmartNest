@@ -1,5 +1,6 @@
 using FluentAssertions;
 using SmartNest.Shared.Security;
+using System.Security.Claims;
 using Xunit;
 
 namespace SmartNest.Shared.Tests.Security;
@@ -65,6 +66,35 @@ public class CurrentUserTests
         var token = JwtTestTokenFactory.Create(oid: null, roles: new[] { "SmartNest.Owner" }, homeId: "home-1");
 
         var act = () => CurrentUser.FromAuthorizationHeader($"Bearer {token}");
+
+        act.Should().Throw<UnauthorizedException>();
+    }
+
+    [Fact]
+    public void FromClaimsPrincipal_ParsesClaims_WhenPrincipalIsWellFormed()
+    {
+        var identity = new ClaimsIdentity(new[]
+        {
+            new Claim("oid", "user-oid-1"),
+            new Claim("roles", "SmartNest.Owner"),
+            new Claim("roles", "SmartNest.Technician"),
+            new Claim("homeId", "home-1"),
+        });
+        var principal = new ClaimsPrincipal(identity);
+
+        var user = CurrentUser.FromClaimsPrincipal(principal);
+
+        user.UserId.Should().Be("user-oid-1");
+        user.Roles.Should().BeEquivalentTo(new[] { "SmartNest.Owner", "SmartNest.Technician" });
+        user.HomeId.Should().Be("home-1");
+    }
+
+    [Fact]
+    public void FromClaimsPrincipal_Throws_WhenSubjectClaimMissing()
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("roles", "SmartNest.Owner") }));
+
+        var act = () => CurrentUser.FromClaimsPrincipal(principal);
 
         act.Should().Throw<UnauthorizedException>();
     }

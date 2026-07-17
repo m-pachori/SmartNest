@@ -249,6 +249,8 @@ module homeFunctionAppModule 'modules/function-app.bicep' = {
     serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusFunctionsSecretUri
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
     additionalAppSettings: {
+      'Auth:TenantId': tenantId
+      'Auth:Audience': 'api://${apiAppClientId}'
       'Cosmos:HomesContainerName': 'homes'
       'Cosmos:DevicesContainerName': 'devices'
       'Cosmos:UsersContainerName': 'users'
@@ -370,6 +372,8 @@ module deviceFunctionAppModule 'modules/function-app.bicep' = {
     serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusDeviceSvcSendSecretUri
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
     additionalAppSettings: {
+      'Auth:TenantId': tenantId
+      'Auth:Audience': 'api://${apiAppClientId}'
       'Cosmos:DevicesContainerName': 'devices'
       // Read-only lookup used for the ownership check (Cosmos-level home
       // ownership verification, mirroring Home Service - see
@@ -479,6 +483,8 @@ module identityFunctionAppModule 'modules/function-app.bicep' = {
     serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusIdentitySvcSendSecretUri
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
     additionalAppSettings: {
+      'Auth:TenantId': tenantId
+      'Auth:Audience': 'api://${apiAppClientId}'
       'Cosmos:UsersContainerName': 'users'
       // Read-only lookup used for the ownership check (Cosmos-level home
       // ownership verification, mirroring Home/Device Service - see
@@ -586,6 +592,8 @@ module platformFunctionAppModule 'modules/function-app.bicep' = {
     serviceBusConnectionStringSecretUri: keyVaultModule.outputs.serviceBusPlatformSvcSendListenSecretUri
     appInsightsConnectionString: appInsightsModule.outputs.connectionString
     additionalAppSettings: {
+      'Auth:TenantId': tenantId
+      'Auth:Audience': 'api://${apiAppClientId}'
       'Cosmos:HomesContainerName': 'homes'
       'Cosmos:DevicesContainerName': 'devices'
       'Cosmos:RulesContainerName': 'rules'
