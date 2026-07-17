@@ -3,16 +3,19 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using SmartNest.IdentityService.Dtos;
 using SmartNest.IdentityService.Handlers;
+using SmartNest.Shared.Security;
 
 namespace SmartNest.IdentityService.Functions;
 
 public sealed class UpdateUserRole
 {
     private readonly UpdateUserRoleHandler _handler;
+    private readonly IJwtValidator _jwtValidator;
 
-    public UpdateUserRole(UpdateUserRoleHandler handler)
+    public UpdateUserRole(UpdateUserRoleHandler handler, IJwtValidator jwtValidator)
     {
         _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        _jwtValidator = jwtValidator ?? throw new ArgumentNullException(nameof(jwtValidator));
     }
 
     [Function("UpdateUserRole")]
@@ -22,7 +25,7 @@ public sealed class UpdateUserRole
         CancellationToken cancellationToken) =>
         HttpFunctionHelpers.ExecuteAsync(async () =>
         {
-            var user = HttpFunctionHelpers.GetCurrentUser(req);
+            var user = await HttpFunctionHelpers.GetCurrentUserAsync(req, _jwtValidator, cancellationToken).ConfigureAwait(false);
             var request = await HttpFunctionHelpers.ReadRequiredJsonAsync<UpdateUserRoleRequest>(req, cancellationToken)
                 .ConfigureAwait(false);
 

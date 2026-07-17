@@ -12,6 +12,7 @@ using SmartNest.IdentityService.Events;
 using SmartNest.IdentityService.Handlers;
 using SmartNest.IdentityService.Repositories;
 using SmartNest.Shared.Events;
+using SmartNest.Shared.Security;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
@@ -25,6 +26,19 @@ if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("APPLICATIONINSIGHT
 }
 
 var configuration = builder.Configuration;
+
+// JWT validation - validates Entra ID token signature/issuer/audience/expiry against the
+// tenant's live JWKS (see SmartNest.Shared.Security.EntraJwtValidator). Function-level
+// defence-in-depth on top of APIM's validate-jwt policy (infra/modules/apim.bicep) -
+// required while deployApim is disabled (infra/main.bicep).
+builder.Services.AddSingleton(_ => new JwtValidationOptions
+{
+    TenantId = configuration["Auth:TenantId"]
+        ?? throw new InvalidOperationException("Auth:TenantId app setting is required."),
+    Audience = configuration["Auth:Audience"]
+        ?? throw new InvalidOperationException("Auth:Audience app setting is required."),
+});
+builder.Services.AddSingleton<IJwtValidator, EntraJwtValidator>();
 
 // Cosmos DB — connection details wired via Key Vault references in Function App settings
 // (see infra/modules/function-app.bicep). Container: "users", partition key: "/homeId".

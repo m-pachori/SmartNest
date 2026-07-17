@@ -14,10 +14,15 @@ internal static class HttpFunctionHelpers
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public static CurrentUser GetCurrentUser(HttpRequest request)
+    /// <summary>
+    /// Extracts and cryptographically validates the caller's identity from the
+    /// <c>Authorization</c> header (signature/issuer/audience/expiry - see
+    /// <see cref="IJwtValidator"/>).
+    /// </summary>
+    public static Task<CurrentUser> GetCurrentUserAsync(HttpRequest request, IJwtValidator validator, CancellationToken cancellationToken = default)
     {
         var header = request.Headers["Authorization"].FirstOrDefault();
-        return CurrentUser.FromAuthorizationHeader(header);
+        return CurrentUser.FromAuthorizationHeaderAsync(header, validator, cancellationToken);
     }
 
     public static async Task<T> ReadRequiredJsonAsync<T>(HttpRequest request, CancellationToken cancellationToken = default)

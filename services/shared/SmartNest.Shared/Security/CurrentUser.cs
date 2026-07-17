@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace SmartNest.Shared.Security;
 
@@ -73,5 +74,67 @@ public sealed class CurrentUser
             Roles = roles,
             HomeId = homeId,
         };
+    }
+
+    /// <summary>
+    /// Builds a <see cref="CurrentUser"/> from claims that have already passed signature/
+    /// issuer/audience/lifetime validation (see <see cref="IJwtValidator"/>). Prefer
+    /// <see cref="FromAuthorizationHeaderAsync"/> over <see cref="FromAuthorizationHeader"/>
+    /// wherever a validator is available - the latter never checks the signature.
+    /// </summary>
+    /// <exception cref="UnauthorizedException">
+    /// Thrown when the principal is missing a subject/object-id claim.
+    /// </exception>
+    public static CurrentUser FromClaimsPrincipal(ClaimsPrincipal principal)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+
+        var userId = principal.FindFirst("oid")?.Value
+            ?? principal.FindFirst("sub")?.Value
+            ?? throw new UnauthorizedException("Token is missing a subject/object identifier claim.");
+
+        var roles = principal.FindAll("roles")
+            .Concat(principal.FindAll("role"))
+            .Select(c => c.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var homeId = principal.FindFirst("homeId")?.Value;
+
+        return new CurrentUser
+        {
+            UserId = userId,
+            Roles = roles,
+            HomeId = homeId,
+        };
+    }
+
+    /// <summary>
+    /// Parses and cryptographically validates a <see cref="CurrentUser"/> from the raw
+    /// <c>Authorization</c> header value using <paramref name="validator"/> (signature,
+    /// issuer, audience, and expiry are all checked - unlike <see cref="FromAuthorizationHeader"/>).
+    /// </summary>
+    /// <exception cref="UnauthorizedException">
+    /// Thrown when the header is missing/empty, the token fails validation, or the token
+    /// is missing a subject/object-id claim.
+    /// </exception>
+    public static async Task<CurrentUser> FromAuthorizationHeaderAsync(
+        string? authorizationHeaderValue, IJwtValidator validator, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(validator);
+
+        if (string.IsNullOrWhiteSpace(authorizationHeaderValue))
+            throw new UnauthorizedException("Authorization header is missing.");
+
+        const string bearerPrefix = "Bearer ";
+        var token = authorizationHeaderValue.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase)
+            ? authorizationHeaderValue[bearerPrefix.Length..].Trim()
+            : authorizationHeaderValue.Trim();
+
+        if (string.IsNullOrWhiteSpace(token))
+            throw new UnauthorizedException("Bearer token is empty.");
+
+        var principal = await validator.ValidateAsync(token, cancellationToken).ConfigureAwait(false);
+        return FromClaimsPrincipal(principal);
     }
 }
